@@ -35,6 +35,9 @@ If the project is in a normal Windows folder with a `venv`, run `powershell -Exe
 ### Local dependency note
 The local Python process expects PostgreSQL on `localhost:5432` and Redis on `localhost:6379`. The example environment is configured for the Docker Compose development credentials. The Compose bot container uses the internal PostgreSQL/PgBouncer and Redis service names automatically.
 
+### Optional action GIF providers
+Action GIFs try Giphy first when `GIPHY_API_KEY` is set, then Tenor when `TENOR_API_KEY` is set, and finally the existing OtakuGIFs provider. Giphy and Tenor require their own API keys; add either or both to `.env`. Without keys, the existing provider remains available.
+
 
 
 ## v0.8 Peak Product Pass
