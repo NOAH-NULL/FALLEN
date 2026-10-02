@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "discord-bot.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector: {matchLabels: {app: discord-bot}}
+  template:
+    metadata: {labels: {app: discord-bot}}
+    spec:
+      containers:
+      - name: bot
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        envFrom:
+        - secretRef: {name: discord-bot-secrets}
+        env:
+        - name: HEALTH_PORT
+          value: "{{ .Values.ports.health }}"
+        - name: METRICS_PORT
+          value: "{{ .Values.ports.metrics }}"
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+        ports:
+        - {name: health, containerPort: {{ .Values.ports.health }} }
+        - {name: metrics, containerPort: {{ .Values.ports.metrics }} }
+        readinessProbe:
+          httpGet: {path: /readyz, port: health}
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet: {path: /healthz, port: health}
+          initialDelaySeconds: 20
+          periodSeconds: 20

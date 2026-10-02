@@ -107,6 +107,9 @@ The default text-command prefix is `,` and can be changed with `COMMAND_PREFIX`.
 - `,play <query>` / `,p`
 - `,stop` / `,s`
 
+Moderation commands respect Discord permissions and role hierarchy. Music playback uses Wavelink with an external Lavalink v4 node. Set `LAVALINK_URL` and `LAVALINK_PASSWORD` in `.env` to connect; the node must be reachable by the bot and have plugins configured for the media sources you want. The player stays connected while the bot process is running, including when its queue is empty. Queue state and voice sessions are not restored after a process restart. Playback latency and source availability depend on the Lavalink host, network, and its plugins.
+
+Music commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/stop` and `,play`, `,skip`, `,pause`, `,resume`, `,queue`, `,stop`.
 
 ## Prefix commands
 Every user-facing slash command also has a prefix/text equivalent using `COMMAND_PREFIX` (default `,`). Grouped slash commands keep their grouped text form too, for example:
@@ -212,6 +215,3 @@ The 600+ command target is a product scope, not a reason to generate hundreds of
 - Authenticated `/api/v1/guilds/{guild_id}/audit-logs`, `/snapshots`, `/snapshots/restore`, and `/automod/rules` endpoints.
 - Dashboard accepts the configured credential as a Bearer token or `X-Dashboard-Key`.
 - 63 automated tests passing in the release build.
-
-
-## Music

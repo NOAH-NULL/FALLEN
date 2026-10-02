@@ -1,0 +1,27 @@
+replicaCount: 2
+image:
+  repository: discord-bot
+  tag: stable
+ports:
+  health: 8080
+  metrics: 9100
+resources:
+  requests: {cpu: 250m, memory: 256Mi}
+  limits: {cpu: '2', memory: 1Gi}
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+
+pgbouncer:
+  enabled: true
+  image: edoburu/pgbouncer:latest
+  replicas: 2
+  postgresHost: postgres
+  # Inject a real SCRAM userlist through the deployment secret in production.
+  userlist: '"discordbot" "CHANGE_ME"'
+  maxClientConn: 1000
+  defaultPoolSize: 20
+  minPoolSize: 5
+  reservePoolSize: 10

@@ -1,4 +1,6 @@
 discord.py>=2.6,<3
+davey>=0.1.6,<0.2
+wavelink>=3.5,<4
 SQLAlchemy[asyncio]>=2.0,<3
 asyncpg>=0.30,<1
 alembic>=1.16,<2
@@ -19,4 +21,3 @@ opentelemetry-exporter-otlp-proto-grpc>=1.36,<2
 uvloop>=0.21; platform_system != "Windows"
 
 PyNaCl>=1.5,<2
-

@@ -1,0 +1,309 @@
+import asyncio
+import logging
+from collections import defaultdict, deque
+import discord
+from discord.ext import commands
+from bot.core.db import Database
+from bot.core.health import start_health_server
+from bot.core.metrics import GATEWAY_LATENCY,GUILDS,EVENTS,start_metrics
+from bot.core.telemetry import setup_telemetry
+from bot.cache.redis import RedisCache
+from bot.cache.rate_limit import DistributedRateLimiter
+from bot.cache.invalidation import CacheInvalidationSubscriber
+from bot.services.guild_config import GuildConfigService
+from bot.services.greeting import GreetingRenderer
+from bot.services.music import MusicService
+from bot.services.automod import AutoModService
+from bot.services.custom_commands import CustomCommandService
+from bot.services.levels import LevelService
+from bot.services.tickets import TicketService
+from bot.services.platform import PlatformService
+from bot.services.antiraid import AntiRaid
+from bot.services.reactions import ReactionGifService
+from bot.services.uwuify import UwuifyService
+from bot.services.invites import InviteTracker
+from bot.services.extreme import ExtremeService
+from bot.services.v16_runtime import V16Runtime
+from bot.workers.greetings import GreetingWorker
+from bot.workers.gateway import GatewayWorkerPool
+from bot.workers.scheduler import Scheduler
+from bot.web.api import DashboardAPI
+from bot.core.event_queue import GatewayEventQueue
+from bot.core.shard_lease import ShardLeaseManager
+from bot.core.app_errors import handle_app_command_error
+from bot.core.prefix_errors import handle_prefix_command_error
+log=logging.getLogger('bot')
+EXTENSIONS=('bot.commands.greeting','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.extreme')
+class Bot(commands.AutoShardedBot):
+    def __init__(self,settings):
+        intents=discord.Intents.default(); intents.members=True; intents.message_content=True
+        kwargs={'command_prefix':settings.command_prefix,'intents':intents,'chunk_guilds_at_startup':False,'help_command':None}
+        if settings.shard_count is not None: kwargs['shard_count']=settings.shard_count
+        if settings.parsed_shard_ids is not None: kwargs['shard_ids']=settings.parsed_shard_ids
+        super().__init__(**kwargs); self.settings=settings; self.log=log
+        self.tree.on_error = handle_app_command_error
+        self.add_listener(handle_prefix_command_error, 'on_command_error')
+        self.db=Database(settings); self.cache=RedisCache(settings.redis_url,settings.redis_max_connections)
+        self.limiter=DistributedRateLimiter(self.cache); self.guild_config=GuildConfigService(self.db,self.cache,settings.cache_ttl_seconds,settings.redis_lock_ttl_ms)
+        self.greetings=GreetingRenderer(); self.music=MusicService(self,settings.music_url,settings.music_password); self.greeting_worker=GreetingWorker(self,settings.greeting_queue_size,settings.greeting_workers,settings.greeting_max_event_age)
+        self.invalidation=CacheInvalidationSubscriber(self.cache); self.scheduler=Scheduler(self); self.dashboard=DashboardAPI(self,settings.dashboard_host,settings.dashboard_port)
+        self.automod=AutoModService(self.cache, settings.automod_heat_decay, settings.automod_heat_ttl); self.custom_commands=CustomCommandService(self.db,self.cache); self.levels=LevelService(self.db); self.tickets=TicketService(); self.platform=PlatformService(self.db); self.extreme=ExtremeService(self.db); self.v16=V16Runtime(self); self.antiraid=AntiRaid(self.cache); self.reactions=ReactionGifService(); self.uwuify=UwuifyService(self.cache); self.invites=InviteTracker(self.db,self.cache,settings.invite_join_queue_size,settings.invite_stat_flush_interval,bot=self)
+        self.gateway_queue=GatewayEventQueue(settings.gateway_queue_size, settings.gateway_critical_queue_size); self.gateway_workers=GatewayWorkerPool(self,self.gateway_queue,settings.gateway_workers,settings.gateway_guild_concurrency,settings.gateway_max_event_age,settings.gateway_dlq_maxsize)
+        self.shard_leases=ShardLeaseManager(self.cache, settings.instance_id, settings.shard_lease_ttl_ms); self.shard_leases.bind_shutdown(self.close); self.db.set_fence_guard(self.shard_leases.validate_fence)
+        self._xp_cooldown={}; self._xp_cap=200000; self.health_runner=None
+        self._destructive_actions = defaultdict(deque)
+    async def setup_hook(self):
+        setup_telemetry(self.settings); start_metrics(self.settings.metrics_host,self.settings.metrics_port); self.health_runner=await start_health_server(self,self.settings.metrics_host,self.settings.health_port)
+        shard_ids=self.settings.parsed_shard_ids or list(range(self.settings.shard_count or 1))
+        await self.shard_leases.acquire(shard_ids)
+        await self.music.start(); await self.greetings.start(); await self.reactions.start(); await self.greeting_worker.start(); await self.invites.start(); await self.gateway_workers.start(); await self.invalidation.start(); await self.scheduler.start(); await self.dashboard.start()
+        for ext in EXTENSIONS: await self.load_extension(ext)
+        if self.settings.guild_id: g=discord.Object(id=self.settings.guild_id); self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
+        else: await self.tree.sync()
+    async def security_lockdown(self, guild_id: int, reason: str = "V16 lockdown"):
+        guild = self.get_guild(guild_id)
+        if not guild:
+            return 0
+        existing = await self.extreme.snapshot_get(guild_id, "__lockdown__")
+        if not existing:
+            state = {str(ch.id): ch.overwrites_for(guild.default_role).send_messages for ch in guild.text_channels}
+            await self.extreme.snapshot_save(guild_id, guild.me.id if guild.me else 0, "__lockdown__", {"channels": state, "created_at": discord.utils.utcnow().isoformat()})
+        changed = 0
+        for channel in guild.text_channels:
+            try:
+                await channel.set_permissions(guild.default_role, send_messages=False, reason=reason[:512])
+                changed += 1
+            except discord.HTTPException:
+                continue
+        await self.extreme.record_security(guild_id, "automatic_lockdown", details={"reason": reason, "channels": changed})
+        return changed
+
+    async def security_unlockdown(self, guild_id: int, reason: str = "V16 lockdown recovery"):
+        guild = self.get_guild(guild_id)
+        if not guild:
+            return 0
+        snapshot = await self.extreme.snapshot_get(guild_id, "__lockdown__")
+        state = snapshot.payload.get("channels", {}) if snapshot else {}
+        changed = 0
+        for channel in guild.text_channels:
+            try:
+                value = state.get(str(channel.id))
+                await channel.set_permissions(guild.default_role, send_messages=value, reason=reason[:512])
+                changed += 1
+            except discord.HTTPException:
+                continue
+        if snapshot:
+            await self.extreme.snapshot_delete(guild_id, "__lockdown__")
+        await self.extreme.record_security(guild_id, "lockdown_recovery", details={"reason": reason, "channels": changed, "restored_snapshot": bool(snapshot)})
+        return changed
+
+    async def snapshot_security_state(self, guild, created_by=0, name="__security_state__"):
+        payload = {
+            "channels": {str(ch.id): {"name": ch.name, "position": ch.position,
+                "overwrites": {str(target.id): {"allow": ow.pair()[0].value, "deny": ow.pair()[1].value}
+                    for target, ow in ch.overwrites.items()}} for ch in guild.channels},
+            "roles": {str(role.id): {"name": role.name, "position": role.position, "permissions": role.permissions.value,
+                "colour": role.colour.value, "hoist": role.hoist, "mentionable": role.mentionable}
+                for role in guild.roles if not role.is_default()},
+        }
+        return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
+
+    async def restore_security_state(self, guild, name="__security_state__"):
+        snapshot = await self.extreme.snapshot_get(guild.id, name)
+        if not snapshot:
+            return {"roles": 0, "channels": 0}
+        restored = {"roles": 0, "channels": 0}
+        role_data = snapshot.payload.get("roles", {})
+        for role_id, data in role_data.items():
+            role = guild.get_role(int(role_id))
+            if not role or role >= guild.me.top_role:
+                continue
+            try:
+                await role.edit(name=data.get("name", role.name), permissions=discord.Permissions(data.get("permissions", role.permissions.value)),
+                                 colour=discord.Colour(data.get("colour", role.colour.value)), hoist=data.get("hoist", role.hoist),
+                                 mentionable=data.get("mentionable", role.mentionable), reason="Fallen anti-nuke restoration")
+                restored["roles"] += 1
+            except discord.HTTPException:
+                continue
+        return restored
+
+    async def quarantine_member(self, guild, member, reason="Fallen anti-nuke quarantine"):
+        if not member or not guild.me or member.id in {guild.owner_id, guild.me.id}:
+            return False
+        quarantine = discord.utils.get(guild.roles, name="Fallen Quarantine")
+        if quarantine is None:
+            try:
+                quarantine = await guild.create_role(name="Fallen Quarantine", permissions=discord.Permissions.none(), reason=reason)
+                for channel in guild.channels:
+                    try:
+                        await channel.set_permissions(quarantine, view_channel=False, send_messages=False, reason=reason)
+                    except discord.HTTPException:
+                        pass
+            except discord.HTTPException:
+                return False
+        try:
+            removable = [r for r in member.roles[1:] if r < guild.me.top_role and r != quarantine]
+            if removable:
+                await member.remove_roles(*removable, reason=reason)
+            await member.add_roles(quarantine, reason=reason)
+            await self.extreme.record_security(guild.id, "rogue_staff_quarantine", actor_id=member.id, details={"reason": reason})
+            return True
+        except discord.HTTPException:
+            return False
+
+    async def restore_deleted_resource(self, guild, resource, action):
+        """Best-effort recreation of a freshly deleted channel/role."""
+        try:
+            if action == 'channel_delete' and hasattr(resource, 'name'):
+                category = guild.get_channel(resource.category_id) if getattr(resource, 'category_id', None) else None
+                overwrites = resource.overwrites
+                created = await guild.create_text_channel(resource.name, category=category, position=resource.position, overwrites=overwrites, reason='Fallen anti-nuke restoration')
+                return created.id
+            if action == 'role_delete' and hasattr(resource, 'name'):
+                role = await guild.create_role(name=resource.name, permissions=resource.permissions, colour=resource.colour, hoist=resource.hoist, mentionable=resource.mentionable, reason='Fallen anti-nuke restoration')
+                try:
+                    await role.edit(position=min(resource.position, guild.me.top_role.position - 1), reason='Fallen anti-nuke restoration')
+                except discord.HTTPException:
+                    pass
+                return role.id
+        except discord.HTTPException:
+            return None
+        return None
+
+    async def _observe_destructive_action(self, guild, actor_id: int | None, action: str, target_id: int | None = None, resource=None):
+        if actor_id is None or not guild:
+            return
+        now = asyncio.get_running_loop().time()
+        key = (guild.id, actor_id, action)
+        q = self._destructive_actions[key]
+        q.append(now)
+        while q and now - q[0] > 12:
+            q.popleft()
+        await self.extreme.record_security(guild.id, action, actor_id=actor_id, target_id=target_id, details={"burst_count": len(q)})
+        if len(q) >= 3:
+            member = guild.get_member(actor_id)
+            if member and await self.extreme.enabled(guild.id, "automatic_lockdown"):
+                await self.snapshot_security_state(guild, member.id)
+                await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
+                await self.restore_deleted_resource(guild, resource, action) if resource else None
+                await self.restore_security_state(guild)
+                await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
+                q.clear()
+
+    async def _audit_actor_for(self, guild, action, target_id):
+        try:
+            async for entry in guild.audit_logs(limit=8, action=action):
+                if getattr(entry.target, "id", None) == target_id:
+                    return entry.user.id if entry.user else None
+        except discord.HTTPException:
+            return None
+        return None
+
+    async def on_ready(self):
+        GUILDS.set(len(self.guilds)); GATEWAY_LATENCY.set(self.latency); log.info('ready guilds=%d shards=%s ids=%s',len(self.guilds),self.shard_count,self.shard_ids)
+        for guild in self.guilds:
+            await self.invites.refresh_guild(guild)
+            if await self.extreme.snapshot_get(guild.id, '__security_state__') is None:
+                try: await self.snapshot_security_state(guild, guild.me.id if guild.me else 0)
+                except Exception: log.exception('security baseline snapshot failed guild=%s', guild.id)
+    async def on_guild_channel_delete(self, channel):
+        guild = channel.guild
+        actor = await self._audit_actor_for(guild, discord.AuditLogAction.channel_delete, channel.id)
+        if await self.extreme.enabled(guild.id, "anti_channel_delete"):
+            await self._observe_destructive_action(guild, actor, "channel_delete", channel.id, channel)
+
+    async def on_guild_role_delete(self, role):
+        guild = role.guild
+        actor = await self._audit_actor_for(guild, discord.AuditLogAction.role_delete, role.id)
+        if await self.extreme.enabled(guild.id, "anti_role_delete"):
+            await self._observe_destructive_action(guild, actor, "role_delete", role.id, role)
+
+    async def on_guild_join(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_join').inc(); await self.guild_config.invalidate(guild.id)
+    async def on_guild_remove(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_remove').inc()
+    # Gateway callbacks are intentionally O(1): enqueue and return immediately.
+    async def on_member_join(self,m): self.gateway_queue.put_nowait('member_join',m)
+    async def on_member_remove(self,m): self.gateway_queue.put_nowait('member_remove',m)
+    async def on_message(self,message):
+        if message.author.bot or not message.guild:return
+        critical = message.content.startswith(self.command_prefix)
+        self.gateway_queue.put_nowait('message',message,critical=critical)
+    async def process_member_join(self,m):
+        legacy_raid = await self.antiraid.observe(m.guild.id)
+        actions = await self.v16.member_join(m)
+        raid = legacy_raid or "raid" in actions
+        if raid: log.warning('V16 anti-raid threshold reached guild=%s; shedding welcome work',m.guild.id)
+        cfg=await self.guild_config.get(m.guild.id); role_id=cfg.get('autorole_id')
+        if role_id:
+            role=m.guild.get_role(role_id)
+            if role:
+                try: await m.add_roles(role,reason='Configured autorole')
+                except discord.HTTPException: log.warning('autorole failed guild=%s member=%s',m.guild.id,m.id)
+        # Invite HTTP attribution is deliberately off the critical join path.
+        await self.invites.submit_join(m, suppress_greeting=raid)
+    async def process_member_remove(self,m):
+        await self.invites.record_leave(m)
+        await self.greeting_worker.submit(m,'goodbye')
+    async def process_message(self,message):
+        # Prefix commands take the fast lane: parse/invoke before non-critical
+        # XP, invite and moderation bookkeeping. This keeps command latency
+        # independent of background engagement work.
+        if message.content.startswith(self.command_prefix):
+            ctx = await self.get_context(message)
+            if ctx.command:
+                await self.invoke(ctx)
+                return
+            raw = message.content[len(self.command_prefix):].strip().split(maxsplit=1)
+            if raw:
+                response = await self.custom_commands.get(message.guild.id, raw[0].lower())
+                if response:
+                    await message.channel.send(response[:1900], allowed_mentions=discord.AllowedMentions.none())
+                    return
+
+        cfg=await self.guild_config.get(message.guild.id)
+
+        # Real-time UwUify: transform the exact incoming message for users who
+        # opted into the feature. Discord does not allow bots to edit another
+        # user's message, so the safe implementation deletes and reposts the
+        # transformed content. Bot messages are already ignored in on_message.
+        uwu = await self.uwuify.transform_message(message.guild.id, message.author.id, message.content)
+        if uwu is not None and uwu != message.content:
+            try:
+                await message.delete(reason='Fallen UwUify transformation')
+                await message.channel.send(uwu, allowed_mentions=discord.AllowedMentions.none(), reference=message, mention_author=False)
+            except discord.HTTPException:
+                log.warning('UwUify failed guild=%s user=%s message=%s', message.guild.id, message.author.id, message.id)
+            return
+
+        reasons = await self.v16.message_check(message)
+        if cfg.get('automod_enabled') and self.automod.check(message.guild.id,message.author.id,message.content,cfg.get('spam_limit',6),cfg.get('spam_window',8)):
+            reasons.append('legacy_automod')
+        if reasons:
+            try: await message.delete(); EVENTS.labels('automod_delete').inc(); await self.extreme.record_security(message.guild.id,'automod_action',actor_id=message.author.id,details={'reasons':reasons,'message_id':message.id})
+            except discord.HTTPException: pass
+            return
+        now=asyncio.get_running_loop().time(); key=(message.guild.id,message.author.id); last=self._xp_cooldown.get(key,0)
+        if now-last>45:
+            self._xp_cooldown[key]=now
+            if len(self._xp_cooldown)>self._xp_cap:self._xp_cooldown.clear()
+            try:
+                new_level, leveled_up, _ = await self.levels.add_xp(*key)
+                if leveled_up:
+                    member = message.guild.get_member(message.author.id)
+                    reward = await self.levels.role_for_level(message.guild.id, new_level)
+                    if member and reward:
+                        role = message.guild.get_role(reward.role_id)
+                        if role and role < message.guild.me.top_role:
+                            configured = await self.levels.configured_roles(message.guild.id)
+                            old_roles = [message.guild.get_role(r.role_id) for r in configured if r.role_id != role.id]
+                            remove = [r for r in old_roles if r and r in member.roles and r < message.guild.me.top_role]
+                            if remove:
+                                await member.remove_roles(*remove, reason=f'Level {new_level} reward')
+                            if role not in member.roles:
+                                await member.add_roles(role, reason=f'Reached level {new_level}')
+            except Exception: log.exception('level update failed')
+    async def close(self):
+        if self.health_runner: await self.health_runner.cleanup()
+        await self.music.close()
+        # Drain accepted gateway work before releasing shard ownership or closing dependencies.
+        await self.gateway_workers.close(self.settings.gateway_shutdown_timeout)
+        await self.invites.close(); await self.shard_leases.release(); await self.invalidation.close(); await self.scheduler.close(); await self.dashboard.close(); await self.greeting_worker.close(); await self.greetings.close(); await self.reactions.close(); await self.cache.close(); await self.db.close(); await super().close()

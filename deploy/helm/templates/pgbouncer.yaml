@@ -1,0 +1,59 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: discord-bot-pgbouncer
+  labels: {app: discord-bot-pgbouncer}
+data:
+  pgbouncer.ini: |
+    [databases]
+    discordbot = host={{ .Values.pgbouncer.postgresHost }} port=5432 dbname=discordbot
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    auth_type = scram-sha-256
+    auth_file = /etc/pgbouncer/userlist.txt
+    pool_mode = transaction
+    max_client_conn = {{ .Values.pgbouncer.maxClientConn }}
+    default_pool_size = {{ .Values.pgbouncer.defaultPoolSize }}
+    min_pool_size = {{ .Values.pgbouncer.minPoolSize }}
+    reserve_pool_size = {{ .Values.pgbouncer.reservePoolSize }}
+    reserve_pool_timeout = 3
+    server_idle_timeout = 60
+    ignore_startup_parameters = extra_float_digits
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: discord-bot-pgbouncer-auth}
+type: Opaque
+stringData:
+  userlist.txt: {{ .Values.pgbouncer.userlist | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: discord-bot-pgbouncer}
+spec:
+  replicas: {{ .Values.pgbouncer.replicas }}
+  selector: {matchLabels: {app: discord-bot-pgbouncer}}
+  template:
+    metadata: {labels: {app: discord-bot-pgbouncer}}
+    spec:
+      containers:
+      - name: pgbouncer
+        image: "{{ .Values.pgbouncer.image }}"
+        args: ["/etc/pgbouncer/pgbouncer.ini"]
+        ports: [{containerPort: 6432}]
+        volumeMounts:
+        - {name: config, mountPath: /etc/pgbouncer/pgbouncer.ini, subPath: pgbouncer.ini}
+        - {name: auth, mountPath: /etc/pgbouncer/userlist.txt, subPath: userlist.txt, readOnly: true}
+      volumes:
+      - {name: config, configMap: {name: discord-bot-pgbouncer}}
+      - {name: auth, secret: {secretName: discord-bot-pgbouncer-auth}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: discord-bot-pgbouncer}
+spec:
+  selector: {app: discord-bot-pgbouncer}
+  ports: [{port: 6432, targetPort: 6432}]
+{{- end }}
