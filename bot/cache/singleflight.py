@@ -1,6 +1,9 @@
 import asyncio
+import logging
 import random
 import secrets
+
+logger = logging.getLogger(__name__)
 
 
 class DistributedSingleFlight:
@@ -64,9 +67,11 @@ class DistributedSingleFlight:
                         )
                     else:
                         flight_epoch = 1 if await self.cache.acquire_lock(lock_key, token, self.ttl_ms) else 0
+                    
                     if flight_epoch:
+                        lease_lost_event = asyncio.Event()
                         renewer = asyncio.create_task(
-                            self._renew(lock_key, token, flight_epoch),
+                            self._renew(lock_key, token, flight_epoch, lease_lost_event),
                             name=f'cache-lock-renewer:{key}',
                         )
                         try:
@@ -74,15 +79,30 @@ class DistributedSingleFlight:
                             value = await read_cache()
                             if value is not None:
                                 return value
-                            value = await loader()
-                            # The cache adapter rejects this write if the flight
-                            # epoch is no longer current.
+
+                            # Run loader while monitoring the lease health event
+                            loader_task = asyncio.create_task(loader())
+                            
+                            # Wait either for loader completion or lease loss
+                            done, pending = await asyncio.wait(
+                                [loader_task, lease_lost_event.wait()],
+                                return_when=asyncio.FIRST_COMPLETED
+                            )
+
+                            if lease_lost_event.is_set():
+                                loader_task.cancel()
+                                raise RuntimeError(f"Lost distributed lock lease for key '{key}' during execution.")
+
+                            value = await loader_task
+
+                            # The cache adapter rejects this write if the flight epoch is no longer current.
                             if hasattr(self.cache, 'set_json_flight_fenced'):
                                 await self.cache.set_json_flight_fenced(
                                     key, value, lock_key, token, flight_epoch, ttl=300
                                 )
                             else:
                                 await self.cache.set_json(key, value)
+                            
                             if hasattr(self.cache, 'publish'):
                                 await self.cache.publish(
                                     notify_channel,
@@ -101,13 +121,8 @@ class DistributedSingleFlight:
                     if value is not None:
                         return value
                     if asyncio.get_running_loop().time() >= deadline:
-                        # Never bypass the distributed lock on timeout: that
-                        # would recreate the stampede this class prevents.
                         deadline = asyncio.get_running_loop().time() + self.wait_seconds
 
-                    # Pub/Sub is an acceleration path, not a correctness
-                    # dependency. If a subscriber cannot be created, the
-                    # jittered polling fallback remains bounded and safe.
                     try:
                         await self._wait_for_completion(notify_channel, backoff)
                     except Exception:
@@ -134,7 +149,7 @@ class DistributedSingleFlight:
                 except Exception:
                     pass
 
-    async def _renew(self, key, token, fence):
+    async def _renew(self, key, token, fence, lease_lost_event: asyncio.Event):
         interval = max(1.0, self.ttl_ms / 3000)
         try:
             while True:
@@ -144,6 +159,8 @@ class DistributedSingleFlight:
                 else:
                     current = await self.cache.renew_lock(key, token, self.ttl_ms)
                 if not current:
+                    logger.error(f"Distributed lease renewal failed for key {key}. Triggering abortion.")
+                    lease_lost_event.set()
                     return
         except asyncio.CancelledError:
             raise
