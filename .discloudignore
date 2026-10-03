@@ -1,0 +1,8 @@
+.env
+.git
+.pytest_cache
+.venv
+venv
+tests
+__pycache__
+Fallen-v1.2-uwuify.zip
