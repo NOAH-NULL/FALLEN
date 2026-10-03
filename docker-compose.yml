@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://discordbot:discordbot@pgbouncer:6432/discordbot
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-discordbot}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@pgbouncer:6432/${POSTGRES_DB:-discordbot}"
       REDIS_URL: redis://redis:6379/0
       DB_USE_PGBOUNCER: "true"
     depends_on:
@@ -12,13 +12,14 @@ services:
       pgbouncer: {condition: service_started}
       redis: {condition: service_healthy}
       otel-collector: {condition: service_started}
-    ports: ["9100:9100","9101:9101"]
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
-    environment: {POSTGRES_USER: ${POSTGRES_USER:-discordbot}, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}, POSTGRES_DB: ${POSTGRES_DB:-discordbot}}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-discordbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-discordbot}
     volumes: [postgres_data:/var/lib/postgresql/data]
-    ports: ["5432:5432"]
     healthcheck: {test: ["CMD-SHELL","pg_isready -U discordbot -d discordbot"], interval: 5s, timeout: 5s, retries: 10}
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -28,13 +29,15 @@ services:
     volumes:
       - ./deploy/pgbouncer/entrypoint.sh:/opt/pgbouncer-entrypoint.sh:ro
     command: ["/bin/sh", "-c", "/opt/pgbouncer-entrypoint.sh"]
-    ports: ["6432:6432"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-discordbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-discordbot}
   redis:
     image: redis:8-alpine
     restart: unless-stopped
     command: ["redis-server","--appendonly","yes"]
     volumes: [redis_data:/data]
-    ports: ["6379:6379"]
     healthcheck: {test: ["CMD","redis-cli","ping"], interval: 5s, timeout: 3s, retries: 10}
   otel-collector:
     image: otel/opentelemetry-collector:latest
