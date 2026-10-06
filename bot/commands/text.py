@@ -534,14 +534,4 @@ class TextCommands(commands.Cog):
     @commands.guild_only()
     async def custom_remove(self,ctx,name): await self.bot.custom_commands.remove(ctx.guild.id,name.lower()); await ctx.send('Removed.')
 
-    @commands.Cog.listener()
-    async def on_command_error(self,ctx,error):
-        if ctx.command is None:return
-        if isinstance(error,commands.CommandNotFound):return
-        if isinstance(error,commands.MissingPermissions):return await ctx.send('❌ You do not have permission to use that command.')
-        if isinstance(error,commands.MissingRequiredArgument):return await ctx.send(f'❌ Missing argument. Try `{ctx.prefix}help {ctx.command.qualified_name}`.')
-        if isinstance(error,(commands.MemberNotFound,commands.RoleNotFound,commands.ChannelNotFound)):return await ctx.send('❌ I could not resolve that member, role, or channel.')
-        if isinstance(error,commands.BadArgument):return await ctx.send('❌ Invalid argument. Check the command syntax.')
-        raise error
-
 async def setup(bot): await bot.add_cog(TextCommands(bot))
