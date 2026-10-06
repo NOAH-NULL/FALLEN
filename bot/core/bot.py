@@ -121,12 +121,41 @@ class Bot(commands.AutoShardedBot):
             if not role or role >= guild.me.top_role:
                 continue
             try:
-                await role.edit(name=data.get("name", role.name), permissions=discord.Permissions(data.get("permissions", role.permissions.value)),
-                                 colour=discord.Colour(data.get("colour", role.colour.value)), hoist=data.get("hoist", role.hoist),
-                                 mentionable=data.get("mentionable", role.mentionable), reason="Fallen anti-nuke restoration")
+                await role.edit(
+                    name=data.get("name", role.name),
+                    permissions=discord.Permissions(data.get("permissions", role.permissions.value)),
+                    colour=discord.Colour(data.get("colour", role.colour.value)),
+                    hoist=data.get("hoist", role.hoist),
+                    mentionable=data.get("mentionable", role.mentionable),
+                    reason="Fallen anti-nuke restoration",
+                )
                 restored["roles"] += 1
             except discord.HTTPException:
                 continue
+
+        # Restore overwrites for channels that still exist. Missing targets are
+        # skipped because their Discord object no longer exists.
+        channel_data = snapshot.payload.get("channels", {})
+        for channel_id, data in channel_data.items():
+            channel = guild.get_channel(int(channel_id))
+            if channel is None:
+                continue
+            for target_id, overwrite_data in (data.get("overwrites") or {}).items():
+                target = guild.get_role(int(target_id)) or guild.get_member(int(target_id))
+                if target is None:
+                    continue
+                try:
+                    allow = discord.Permissions(overwrite_data.get("allow", 0))
+                    deny = discord.Permissions(overwrite_data.get("deny", 0))
+                    overwrite = discord.PermissionOverwrite.from_pair(allow, deny)
+                    await channel.set_permissions(
+                        target,
+                        overwrite=overwrite,
+                        reason="Fallen anti-nuke restoration",
+                    )
+                    restored["channels"] += 1
+                except (discord.HTTPException, discord.Forbidden):
+                    continue
         return restored
 
     async def quarantine_member(self, guild, member, reason="Fallen anti-nuke quarantine"):
