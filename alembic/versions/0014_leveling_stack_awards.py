@@ -23,10 +23,6 @@ def upgrade():
         """
     )
     op.alter_column("level_settings", "stack_awards", server_default=None)
-    op.alter_column("level_settings", "message_xp_mode", server_default=None)
-    op.alter_column("level_settings", "xp_per_character", server_default=None)
-    op.alter_column("level_settings", "max_character_xp", server_default=None)
-    op.alter_column("level_settings", "xp_channels", server_default=None)
 
 
 def downgrade():
