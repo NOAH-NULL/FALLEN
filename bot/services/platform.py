@@ -17,9 +17,28 @@ class PlatformService:
             row=Reminder(guild_id=guild_id,user_id=user_id,channel_id=channel_id,message=message,due_at=datetime.now(timezone.utc)+timedelta(seconds=seconds)); s.add(row); await s.commit(); await s.refresh(row); return row
     async def due_reminders(self,limit=100):
         async with self.db.session() as s:
-            r=await s.execute(select(Reminder).where(Reminder.delivered==False,Reminder.due_at<=datetime.now(timezone.utc)).order_by(Reminder.due_at).limit(limit).with_for_update(skip_locked=True)); rows=r.scalars().all()
-            for row in rows: row.delivered=True
-            await s.commit(); return rows
+            r=await s.execute(
+                select(Reminder)
+                .where(Reminder.delivered.is_(False), Reminder.due_at <= datetime.now(timezone.utc))
+                .order_by(Reminder.due_at)
+                .limit(limit)
+            )
+            return list(r.scalars())
+
+    async def complete_reminder(self, reminder_id: int):
+        async with self.db.session() as s:
+            r=await s.execute(
+                select(Reminder).where(
+                    Reminder.id == reminder_id,
+                    Reminder.delivered.is_(False),
+                ).with_for_update()
+            )
+            row=r.scalar_one_or_none()
+            if row is None:
+                return False
+            row.delivered=True
+            await s.commit()
+            return True
     async def suggestion(self,guild_id,user_id,channel_id,message_id,content):
         async with self.db.session() as s:
             row=Suggestion(guild_id=guild_id,user_id=user_id,channel_id=channel_id,message_id=message_id,content=content); s.add(row); await s.commit(); return row
