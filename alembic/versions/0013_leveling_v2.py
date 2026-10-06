@@ -7,7 +7,7 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    op.add_column("levels", sa.Column("total_xp", sa.Integer(), nullable=False, server_default="0"))
+    op.add_column("levels", sa.Column("total_xp", sa.BigInteger(), nullable=False, server_default="0"))
     op.create_table(
         "level_settings",
         sa.Column("guild_id", sa.BigInteger(), primary_key=True),
