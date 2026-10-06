@@ -52,7 +52,7 @@ class Level(Base):
     guild_id:Mapped[int]=mapped_column(BigInteger,index=True)
     user_id:Mapped[int]=mapped_column(BigInteger,index=True)
     xp:Mapped[int]=mapped_column(Integer,default=0)
-    total_xp:Mapped[int]=mapped_column(Integer,default=0)
+    total_xp:Mapped[int]=mapped_column(BigInteger,default=0)
     level:Mapped[int]=mapped_column(Integer,default=0)
 class ReactionRole(Base):
     __tablename__='reaction_roles'; __table_args__=(UniqueConstraint('guild_id','message_id','emoji'),)
