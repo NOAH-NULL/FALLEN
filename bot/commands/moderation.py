@@ -25,6 +25,7 @@ class Moderation(commands.Cog):
             self.bot.log.exception('failed to create moderation case')
 
     @app_commands.command(name='warn', description='Warn a member and record it permanently')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn(self, i, member: discord.Member, reason: str = 'No reason provided'):
         if not self._check(i, member):
@@ -40,6 +41,7 @@ class Moderation(commands.Cog):
         await send_log(i.guild, await self.bot.guild_config.get(i.guild_id), 'Member warned', f'{member.mention} — {reason}')
 
     @app_commands.command(name='warnings', description='Show a member’s active warnings')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warnings(self, i, member: discord.Member):
         rows = await self.bot.moderation.warnings(i.guild_id, member.id)
@@ -52,6 +54,7 @@ class Moderation(commands.Cog):
         await i.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name='timeout', description='Timeout a member')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
     async def timeout(self, i, member: discord.Member, minutes: app_commands.Range[int, 1, 10080], reason: str = 'No reason provided'):
         if not self._check(i, member):
@@ -65,6 +68,7 @@ class Moderation(commands.Cog):
         await send_log(i.guild, await self.bot.guild_config.get(i.guild_id), 'Member timed out', f'{member.mention} — {reason} ({minutes}m)')
 
     @app_commands.command(name='ban', description='Ban a member')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(ban_members=True)
     async def ban(self, i, member: discord.Member, reason: str = 'No reason provided'):
         if not self._check(i, member):
@@ -77,6 +81,7 @@ class Moderation(commands.Cog):
         await send_log(i.guild, await self.bot.guild_config.get(i.guild_id), 'Member banned', f'{member.mention} — {reason}')
 
     @app_commands.command(name='kick', description='Kick a member')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(kick_members=True)
     async def kick(self, i, member: discord.Member, reason: str = 'No reason provided'):
         if not self._check(i, member):
@@ -89,6 +94,7 @@ class Moderation(commands.Cog):
         await send_log(i.guild, await self.bot.guild_config.get(i.guild_id), 'Member kicked', f'{member.mention} — {reason}')
 
     @app_commands.command(name='clear', description='Bulk delete recent messages')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_messages=True)
     async def clear(self, i, amount: app_commands.Range[int, 1, 100]):
         await i.response.defer(ephemeral=True)
@@ -102,6 +108,7 @@ class Moderation(commands.Cog):
         await i.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name='slowmode', description='Set channel slowmode')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_channels=True)
     async def slowmode(self, i, seconds: app_commands.Range[int, 0, 21600]):
         await i.channel.edit(slowmode_delay=seconds)
@@ -109,12 +116,14 @@ class Moderation(commands.Cog):
         await i.response.send_message(embed=embed)
 
     @app_commands.command(name='lock', description='Lock the current channel')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_channels=True)
     async def lock(self, i):
         await i.channel.set_permissions(i.guild.default_role, send_messages=False)
         await i.response.send_message(embed=success_embed('Channel locked', f'{i.channel.mention} is now locked for @everyone.'))
 
     @app_commands.command(name='unlock', description='Unlock the current channel')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_channels=True)
     async def unlock(self, i):
         await i.channel.set_permissions(i.guild.default_role, send_messages=None)
