@@ -2,6 +2,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import re
+import time
 from sqlalchemy import delete, select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import GuildConfig, FeatureRecord, SecurityEvent, ScheduledAction, AutoModRule, MemberProfile, Reputation, Playlist, Ticket, ConfigSnapshot
@@ -29,16 +30,26 @@ class ExtremeService:
     Commands are adapters; this service owns validation, persistence and reusable
     operations so prefix and slash interfaces cannot drift apart.
     """
-    def __init__(self, db): self.db = db
+    def __init__(self, db):
+        self.db = db
+        self._settings_cache: dict[int, tuple[float, dict]] = {}
+        self._settings_ttl = 1.0
     @staticmethod
     def catalog(): return deepcopy(FEATURES)
     @classmethod
     def all_names(cls): return set(ALL_FEATURES)
     async def get(self, guild_id: int) -> dict:
+        now=time.monotonic()
+        cached=self._settings_cache.get(guild_id)
+        if cached and now < cached[0]:
+            return dict(cached[1])
         async with self.db.session() as s:
             row = await s.get(GuildConfig, guild_id)
             stored = dict(row.extreme_settings or {}) if row else {}
-        out = dict(DEFAULTS); out.update(stored); return out
+        out=dict(DEFAULTS)
+        out.update(stored)
+        self._settings_cache[guild_id]=(now+self._settings_ttl, dict(out))
+        return out
     async def set(self, guild_id: int, key: str, value):
         key = key.strip().lower()
         if key not in ALL_FEATURES: raise ValueError(f"Unknown V16 feature: {key}")
@@ -47,6 +58,7 @@ class ExtremeService:
             if not row:
                 row = GuildConfig(guild_id=guild_id, extreme_settings={}); s.add(row); await s.flush()
             data = dict(row.extreme_settings or {}); data[key] = bool(value); row.extreme_settings = data; await s.commit()
+        self._settings_cache.pop(guild_id, None)
         return bool(value)
     async def enabled(self, guild_id: int, key: str) -> bool:
         return bool((await self.get(guild_id)).get(key, False))
