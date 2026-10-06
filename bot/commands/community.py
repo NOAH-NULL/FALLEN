@@ -9,6 +9,7 @@ class Community(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name='level', description="Show a member's server level and XP")
+    @app_commands.guild_only()
     async def level(self, i, member: discord.Member | None = None):
         m = member or i.user
         row = await self.bot.levels.get(i.guild_id, m.id)
@@ -23,6 +24,7 @@ class Community(commands.Cog):
         await i.response.send_message(embed=embed)
 
     @app_commands.command(name='uwuify', description='Enable or disable real-time UwUify for a member')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_messages=True)
     async def uwuify(self, i, member: discord.Member, enabled: bool = True):
         if member.bot:
@@ -32,6 +34,7 @@ class Community(commands.Cog):
         await i.response.send_message(embed=success_embed(f'UwUify {state}', f'Real-time UwUify is now **{state}** for {member.mention}.'))
 
     @app_commands.command(name='levelrole', description='Assign a role automatically when members reach a level')
+    @app_commands.guild_only()
     @app_commands.describe(level='Level that unlocks the role', role='Role awarded at that level')
     @app_commands.checks.has_permissions(manage_roles=True)
     async def levelrole(self, i, level: app_commands.Range[int, 1, 10000], role: discord.Role):
@@ -41,12 +44,14 @@ class Community(commands.Cog):
         await i.response.send_message(embed=success_embed('Level reward saved', f'Reaching level **{level}** now awards {role.mention}.'))
 
     @app_commands.command(name='levelrole-remove', description='Remove an automatic level-role reward')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_roles=True)
     async def levelrole_remove(self, i, level: app_commands.Range[int, 1, 10000]):
         await self.bot.levels.remove_role(i.guild_id, level)
         await i.response.send_message(embed=success_embed('Level reward removed', f'No role will be awarded at level **{level}**.'))
 
     @app_commands.command(name='levelroles', description='List configured level-role rewards')
+    @app_commands.guild_only()
     async def levelroles(self, i):
         rows = await self.bot.levels.configured_roles(i.guild_id)
         embed = info_embed('Level Roles', 'Automatic role rewards configured for this server.')
@@ -58,6 +63,7 @@ class Community(commands.Cog):
         await i.response.send_message(embed=embed)
 
     @app_commands.command(name='serverinfo', description='Show server information')
+    @app_commands.guild_only()
     async def serverinfo(self, i):
         g = i.guild
         embed = info_embed(g.name, f'Created <t:{int(g.created_at.timestamp())}:R>')
@@ -72,6 +78,7 @@ class Community(commands.Cog):
         await i.response.send_message(embed=embed)
 
     @app_commands.command(name='avatar', description='Show a member avatar')
+    @app_commands.guild_only()
     async def avatar(self, i, member: discord.Member | None = None):
         m = member or i.user
         embed = info_embed(f'{m.display_name} • Avatar', f'Viewing the current avatar for {m.mention}.')
