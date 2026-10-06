@@ -224,12 +224,18 @@ class Bot(commands.AutoShardedBot):
                 q.clear()
 
     async def _audit_actor_for(self, guild, action, target_id):
-        try:
-            async for entry in guild.audit_logs(limit=8, action=action):
-                if getattr(entry.target, "id", None) == target_id:
-                    return entry.user.id if entry.user else None
-        except discord.HTTPException:
-            return None
+        # Audit-log entries can lag the gateway event by a short interval.
+        # Retry briefly before treating attribution as unknown.
+        for attempt in range(3):
+            try:
+                async for entry in guild.audit_logs(limit=8, action=action):
+                    if getattr(entry.target, "id", None) == target_id:
+                        return entry.user.id if entry.user else None
+            except discord.HTTPException:
+                if attempt == 2:
+                    return None
+            if attempt < 2:
+                await asyncio.sleep(0.35 * (attempt + 1))
         return None
 
     async def on_ready(self):
