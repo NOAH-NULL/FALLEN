@@ -42,6 +42,7 @@ class AutoModService:
         self.ttl = max(30, int(ttl))
         self._events = collections.defaultdict(collections.deque)
         self._heat_events = collections.defaultdict(collections.deque)
+        self._local_configs = {}
 
     @staticmethod
     def classify(content, mention_count=0, attachment_count=0):
@@ -78,6 +79,7 @@ class AutoModService:
     async def get_heat_config(self, guild_id):
         defaults = {'decay': self.decay_lambda, 'ttl': self.ttl, **HEAT_WEIGHTS}
         if self.cache is None:
+            defaults.update(self._local_configs.get(guild_id, {}))
             return defaults
         raw = await self.cache.hgetall(f'heat-config:{guild_id}')
         for key in defaults:
