@@ -22,6 +22,8 @@ class Reminder(Base):
     message: Mapped[str]=mapped_column(Text)
     due_at: Mapped[datetime]=mapped_column(DateTime(timezone=True),index=True)
     delivered: Mapped[bool]=mapped_column(Boolean,default=False,index=True)
+    processing: Mapped[bool]=mapped_column(Boolean,default=False,index=True)
+    claimed_at: Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True,index=True)
 
 class Giveaway(Base):
     __tablename__='giveaways'
