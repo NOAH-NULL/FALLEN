@@ -87,7 +87,9 @@ class Bot(commands.AutoShardedBot):
         changed = 0
         for channel in guild.text_channels:
             try:
-                value = state.get(str(channel.id))
+                if str(channel.id) not in state:
+                    continue
+                value = state[str(channel.id)]
                 await channel.set_permissions(guild.default_role, send_messages=value, reason=reason[:512])
                 changed += 1
             except discord.HTTPException:
