@@ -138,11 +138,29 @@ class ExtremeService:
             return True
     async def upsert_automod_rule(self,guild_id,name,kind,pattern='',action='delete',config=None,enabled=True):
         async with self.db.session() as s:
-            row=(await s.execute(select(AutoModRule).where(AutoModRule.guild_id==guild_id,AutoModRule.name==name))).scalar_one_or_none()
-            if not row: row=AutoModRule(guild_id=guild_id,name=name); s.add(row)
-            row.kind=kind; row.pattern=pattern; row.action=action; row.config=config or {}; row.enabled=enabled; await s.commit()
+            stmt=pg_insert(AutoModRule).values(
+                guild_id=guild_id,
+                name=name,
+                kind=kind,
+                pattern=pattern,
+                action=action,
+                config=config or {},
+                enabled=enabled,
+            ).on_conflict_do_update(
+                index_elements=['guild_id', 'name'],
+                set_={
+                    'kind': kind,
+                    'pattern': pattern,
+                    'action': action,
+                    'config': config or {},
+                    'enabled': enabled,
+                },
+            ).returning(AutoModRule.id)
+            rule_id=(await s.execute(stmt)).scalar_one()
+            await s.commit()
             self._rules_cache.pop(guild_id, None)
-            return row
+            result=await s.execute(select(AutoModRule).where(AutoModRule.id==rule_id))
+            return result.scalar_one()
     async def automod_rules(self,guild_id):
         now=time.monotonic()
         cached=self._rules_cache.get(guild_id)
