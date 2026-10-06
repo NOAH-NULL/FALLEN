@@ -133,6 +133,20 @@ class Bot(commands.AutoShardedBot):
             except discord.HTTPException:
                 continue
 
+        role_positions = {
+            guild.get_role(int(role_id)): int(data.get("position", 0))
+            for role_id, data in role_data.items()
+            if guild.get_role(int(role_id)) and guild.get_role(int(role_id)) < guild.me.top_role
+        }
+        if role_positions:
+            try:
+                await guild.edit_role_positions(
+                    positions=role_positions,
+                    reason="Fallen anti-nuke restoration",
+                )
+            except discord.HTTPException:
+                pass
+
         # Restore overwrites for channels that still exist. Missing targets are
         # skipped because their Discord object no longer exists.
         channel_data = snapshot.payload.get("channels", {})
