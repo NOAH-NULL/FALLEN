@@ -248,7 +248,6 @@ class Bot(commands.AutoShardedBot):
                 await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
                 await self.restore_deleted_resource(guild, resource, action) if resource else None
                 await self.restore_security_state(guild)
-                await self.restore_quarantined_member(guild, member.id)
                 await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
                 q.clear()
 
