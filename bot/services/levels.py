@@ -19,6 +19,10 @@ class LevelService:
         "no_xp_channels": [],
         "bonus_roles": {},
         "stack_awards": True,
+        "message_xp_mode": "per_character",
+        "xp_per_character": 1,
+        "max_character_xp": 75,
+        "xp_channels": [],
     }
 
     def __init__(self, db):
@@ -79,6 +83,10 @@ class LevelService:
                 "no_xp_channels": [int(x) for x in (row.no_xp_channels or [])],
                 "bonus_roles": {str(k): max(1, min(10, int(v))) for k, v in (row.bonus_roles or {}).items()},
                 "stack_awards": bool(row.stack_awards),
+                "message_xp_mode": row.message_xp_mode if row.message_xp_mode in {"random", "per_character"} else "per_character",
+                "xp_per_character": max(1, min(100, int(row.xp_per_character))),
+                "max_character_xp": max(1, min(10000, int(row.max_character_xp))),
+                "xp_channels": [int(x) for x in (row.xp_channels or [])],
             }
 
     async def update_settings(self, gid: int, **values) -> dict:
@@ -101,6 +109,14 @@ class LevelService:
             clean["bonus_roles"] = {str(k): max(1, min(10, int(v))) for k, v in clean["bonus_roles"].items()}
         if "stack_awards" in clean:
             clean["stack_awards"] = bool(clean["stack_awards"])
+        if "message_xp_mode" in clean:
+            clean["message_xp_mode"] = clean["message_xp_mode"] if clean["message_xp_mode"] in {"random", "per_character"} else "per_character"
+        if "xp_per_character" in clean:
+            clean["xp_per_character"] = max(1, min(100, int(clean["xp_per_character"])))
+        if "max_character_xp" in clean:
+            clean["max_character_xp"] = max(1, min(10000, int(clean["max_character_xp"])))
+        if "xp_channels" in clean:
+            clean["xp_channels"] = [int(x) for x in clean["xp_channels"]][:100]
         async with self.db.session() as s:
             await s.execute(
                 pg_insert(LevelSettings)
@@ -117,17 +133,28 @@ class LevelService:
         cfg = await self.settings(guild_id)
         if not cfg["enabled"] or channel_id in set(cfg["no_xp_channels"]):
             return False, cfg
+        if cfg["xp_channels"] and channel_id not in set(cfg["xp_channels"]):
+            return False, cfg
         if role_ids.intersection(cfg["no_xp_roles"]):
             return False, cfg
         return True, cfg
+
+    @staticmethod
+    def character_count(content: str) -> int:
+        return sum(1 for ch in content if ch.isalpha())
+
+    async def calculate_message_xp(self, gid: int, content: str) -> int:
+        cfg = await self.settings(gid)
+        if cfg["message_xp_mode"] == "per_character":
+            letters = self.character_count(content)
+            return min(cfg["max_character_xp"], letters * cfg["xp_per_character"])
+        return random.randint(cfg["xp_min"], cfg["xp_max"])
 
     async def add_xp(self, gid: int, uid: int, amount: int | None = None):
         cfg = await self.settings(gid)
         if amount is None:
             amount = random.randint(cfg["xp_min"], cfg["xp_max"])
-        # Match the reference system's hard per-message ceiling so a single message
-        # cannot leap across multiple levels and desynchronise rewards/announcements.
-        amount = max(0, min(self.MAX_MESSAGE_XP, int(amount)))
+        amount = max(0, min(10000, int(amount)))
         async with self.db.session() as s:
             seed = pg_insert(Level).values(
                 guild_id=gid, user_id=uid, xp=0, total_xp=0, level=0
@@ -143,6 +170,20 @@ class LevelService:
             row.xp = max(0, int(row.total_xp) - self.xp_needed(row.level))
             await s.commit()
             return row.level, row.level > old_level, row.xp, row.total_xp
+
+    async def modify_xp(self, gid: int, uid: int, delta: int, *, set_value: bool = False):
+        delta = int(delta)
+        async with self.db.session() as s:
+            seed = pg_insert(Level).values(guild_id=gid, user_id=uid, xp=0, total_xp=0, level=0).on_conflict_do_nothing(index_elements=["guild_id", "user_id"])
+            await s.execute(seed)
+            row = (await s.execute(select(Level).where(Level.guild_id == gid, Level.user_id == uid).with_for_update())).scalar_one()
+            old_level = int(row.level)
+            target_total = max(0, delta) if set_value else max(0, int(row.total_xp) + delta)
+            row.total_xp = target_total
+            row.level = self.level_from_total_xp(target_total)
+            row.xp = max(0, target_total - self.xp_needed(row.level))
+            await s.commit()
+            return old_level, row.level, row.xp, row.total_xp
 
     async def get(self, gid: int, uid: int):
         async with self.db.session() as s:
