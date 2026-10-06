@@ -93,6 +93,33 @@ class Community(commands.Cog):
         embed.add_field(name='Level-up Channel', value=f'<#{target}>' if target else 'Message channel', inline=True)
         await i.response.send_message(embed=embed, ephemeral=True)
 
+    @app_commands.command(name='level-bonus', description='Give a role a leveling XP multiplier')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(role='Role receiving bonus XP', multiplier='XP multiplier from 1x to 10x')
+    async def level_bonus(self, i, role: discord.Role, multiplier: app_commands.Range[int, 1, 10]):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        bonuses = dict(cfg['bonus_roles'])
+        bonuses[str(role.id)] = int(multiplier)
+        await self.bot.levels.update_settings(i.guild_id, bonus_roles=bonuses)
+        await i.response.send_message(
+            embed=success_embed('XP bonus saved', f'{role.mention} now earns **{multiplier}x XP** per eligible award.'),
+            ephemeral=True,
+        )
+
+    @app_commands.command(name='level-bonus-remove', description='Remove a role XP multiplier')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    async def level_bonus_remove(self, i, role: discord.Role):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        bonuses = dict(cfg['bonus_roles'])
+        bonuses.pop(str(role.id), None)
+        await self.bot.levels.update_settings(i.guild_id, bonus_roles=bonuses)
+        await i.response.send_message(
+            embed=success_embed('XP bonus removed', f'{role.mention} no longer receives a leveling multiplier.'),
+            ephemeral=True,
+        )
+
     @app_commands.command(name='level-exclude-channel', description='Exclude a channel from XP')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
