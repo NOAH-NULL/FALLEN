@@ -70,7 +70,7 @@ class LevelService:
             )).scalar_one()
             return {
                 "enabled": bool(row.enabled),
-                "xp_min": max(1, min(1000, int(row.xp_min))),
+                "xp_min": max(1, min(1000, min(int(row.xp_min), int(row.xp_max)))),
                 "xp_max": max(1, min(1000, int(row.xp_max))),
                 "cooldown_seconds": max(1, min(86400, int(row.cooldown_seconds))),
                 "announce": bool(row.announce),
