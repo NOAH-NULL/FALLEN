@@ -155,10 +155,13 @@ class LevelService:
         if not row:
             return None
         async with self.db.session() as s:
+            # Match the reference system's ordered leaderboard semantics while
+            # making ties deterministic: higher XP ranks first, then lower user ID.
             ahead = await s.scalar(
                 select(func.count(Level.id)).where(
                     Level.guild_id == gid,
-                    Level.total_xp > row.total_xp,
+                    (Level.total_xp > row.total_xp)
+                    | ((Level.total_xp == row.total_xp) & (Level.user_id < uid)),
                 )
             )
             return int(ahead or 0) + 1
