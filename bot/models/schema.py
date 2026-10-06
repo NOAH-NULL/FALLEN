@@ -83,3 +83,7 @@ class LevelSettings(Base):
     no_xp_channels:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
     bonus_roles:Mapped[dict]=mapped_column(JSON,default=dict,nullable=False)
     stack_awards:Mapped[bool]=mapped_column(Boolean,default=True,nullable=False)
+    message_xp_mode:Mapped[str]=mapped_column(String(24),default='per_character',nullable=False)
+    xp_per_character:Mapped[float]=mapped_column(Integer,default=1,nullable=False)
+    max_character_xp:Mapped[int]=mapped_column(Integer,default=75,nullable=False)
+    xp_channels:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
