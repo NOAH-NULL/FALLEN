@@ -409,10 +409,18 @@ class Bot(commands.AutoShardedBot):
                 role = message.guild.get_role(reward.role_id)
                 if role and message.guild.me and role < message.guild.me.top_role:
                     configured = await self.levels.configured_roles(message.guild.id)
-                    old_roles = [message.guild.get_role(r.role_id) for r in configured if r.role_id != role.id]
-                    remove = [r for r in old_roles if r and r in member.roles and r < message.guild.me.top_role]
-                    if remove:
-                        await member.remove_roles(*remove, reason=f"Level {new_level} reward")
+                    if not level_cfg.get("stack_awards", True):
+                        old_roles = [
+                            message.guild.get_role(r.role_id)
+                            for r in configured
+                            if r.role_id != role.id and r.level < new_level
+                        ]
+                        remove = [
+                            r for r in old_roles
+                            if r and r in member.roles and r < message.guild.me.top_role
+                        ]
+                        if remove:
+                            await member.remove_roles(*remove, reason=f"Level {new_level} reward replacement")
                     if role not in member.roles:
                         await member.add_roles(role, reason=f"Reached level {new_level}")
 
