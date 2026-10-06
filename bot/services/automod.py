@@ -101,6 +101,8 @@ class AutoModService:
         if self.cache is not None and clean:
             await self.cache.client.hset(f'heat-config:{guild_id}', mapping={k: str(v) for k,v in clean.items()})
             await self.cache.expire(f'heat-config:{guild_id}', 86400 * 30)
+        elif clean:
+            self._local_configs.setdefault(guild_id, {}).update(clean)
         return await self.get_heat_config(guild_id)
 
     async def observe(self, guild_id, user_id, content, mention_count=0, attachment_count=0, spam=False):
@@ -133,12 +135,24 @@ class AutoModService:
         return {'score': score, 'factors': applied, 'action': action}
 
     async def get_heat(self, guild_id, user_id):
+        config = await self.get_heat_config(guild_id)
         if self.cache is None:
-            return 0.0
+            now = time.monotonic()
+            q = self._heat_events.get((guild_id, user_id))
+            if not q:
+                return 0.0
+            while q and now - q[0][0] > config['ttl']:
+                q.popleft()
+            if not q:
+                self._heat_events.pop((guild_id, user_id), None)
+                return 0.0
+            return sum(
+                event_weight * math.exp(-config['decay'] * max(0.0, now - timestamp))
+                for timestamp, event_weight in q
+            )
         data = await self.cache.hgetall(f'heat:{guild_id}:{user_id}')
         if not data:
             return 0.0
-        config = await self.get_heat_config(guild_id)
         clock = await self.cache.client.time()
         now = float(clock[0]) + float(clock[1]) / 1000000.0
         score = float(data.get('score', 0.0))
