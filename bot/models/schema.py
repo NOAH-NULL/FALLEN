@@ -82,3 +82,4 @@ class LevelSettings(Base):
     no_xp_roles:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
     no_xp_channels:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
     bonus_roles:Mapped[dict]=mapped_column(JSON,default=dict,nullable=False)
+    stack_awards:Mapped[bool]=mapped_column(Boolean,default=True,nullable=False)
