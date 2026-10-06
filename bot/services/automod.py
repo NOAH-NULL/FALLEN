@@ -41,6 +41,7 @@ class AutoModService:
         self.decay_lambda = max(0.000001, float(decay_lambda))
         self.ttl = max(30, int(ttl))
         self._events = collections.defaultdict(collections.deque)
+        self._heat_events = collections.defaultdict(collections.deque)
 
     @staticmethod
     def classify(content, mention_count=0, attachment_count=0):
@@ -55,21 +56,24 @@ class AutoModService:
         return factors
 
     async def add_heat(self, guild_id, user_id, weight, factor='unknown'):
+        config = await self.get_heat_config(guild_id)
         if self.cache is not None:
-            # Redis TIME is authoritative across pods.
-            script = self.HEAT_SCRIPT
             result = await self.cache.client.eval(
-                script, 1, f'heat:{guild_id}:{user_id}',
-                time.time(), self.decay_lambda, float(weight), self.ttl
+                self.HEAT_SCRIPT, 1, f'heat:{guild_id}:{user_id}',
+                time.time(), config['decay'], float(weight), config['ttl']
             )
             return float(result)
+
         now = time.monotonic()
         key = (guild_id, user_id)
-        q = self._events[key]
-        while q and now - q[0] > self.ttl:
+        q = self._heat_events[key]
+        while q and now - q[0][0] > config['ttl']:
             q.popleft()
-        q.append(now)
-        return float(weight * len(q))
+        q.append((now, float(weight)))
+        return sum(
+            event_weight * math.exp(-config['decay'] * max(0.0, now - timestamp))
+            for timestamp, event_weight in q
+        )
 
     async def get_heat_config(self, guild_id):
         defaults = {'decay': self.decay_lambda, 'ttl': self.ttl, **HEAT_WEIGHTS}
