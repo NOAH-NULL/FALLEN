@@ -43,7 +43,7 @@ class ExtremeService:
         key = key.strip().lower()
         if key not in ALL_FEATURES: raise ValueError(f"Unknown V16 feature: {key}")
         async with self.db.session() as s:
-            row = await s.get(GuildConfig, guild_id)
+            row = await s.get(GuildConfig, guild_id, with_for_update=True)
             if not row:
                 row = GuildConfig(guild_id=guild_id, extreme_settings={}); s.add(row); await s.flush()
             data = dict(row.extreme_settings or {}); data[key] = bool(value); row.extreme_settings = data; await s.commit()
@@ -135,7 +135,7 @@ class ExtremeService:
     async def set_profile(self,guild_id,user_id,**changes):
         allowed={'bio','color','badges','birthday'}; changes={k:v for k,v in changes.items() if k in allowed}
         async with self.db.session() as s:
-            row=(await s.execute(select(MemberProfile).where(MemberProfile.guild_id==guild_id,MemberProfile.user_id==user_id))).scalar_one_or_none()
+            row=(await s.execute(select(MemberProfile).where(MemberProfile.guild_id==guild_id,MemberProfile.user_id==user_id).with_for_update())).scalar_one_or_none()
             if not row: row=MemberProfile(guild_id=guild_id,user_id=user_id); s.add(row)
             for k,v in changes.items(): setattr(row,k,v)
             await s.commit(); return row
@@ -161,14 +161,14 @@ class ExtremeService:
     async def save_playlist(self,guild_id,owner_id,name,tracks,server_wide=False):
         if len(name)>64 or not name.strip(): raise ValueError('Invalid playlist name')
         async with self.db.session() as s:
-            row=(await s.execute(select(Playlist).where(Playlist.guild_id==guild_id,Playlist.owner_id==owner_id,Playlist.name==name))).scalar_one_or_none()
+            row=(await s.execute(select(Playlist).where(Playlist.guild_id==guild_id,Playlist.owner_id==owner_id,Playlist.name==name).with_for_update())).scalar_one_or_none()
             if not row: row=Playlist(guild_id=guild_id,owner_id=owner_id,name=name); s.add(row)
             row.tracks=list(tracks)[:100]; row.server_wide=server_wide; await s.commit(); return row
     async def playlists(self,guild_id,owner_id):
         async with self.db.session() as s: return list((await s.execute(select(Playlist).where(Playlist.guild_id==guild_id,Playlist.owner_id==owner_id).order_by(Playlist.name))).scalars())
     async def snapshot_save(self,guild_id,created_by,name,payload):
         async with self.db.session() as s:
-            row=(await s.execute(select(ConfigSnapshot).where(ConfigSnapshot.guild_id==guild_id,ConfigSnapshot.name==name))).scalar_one_or_none()
+            row=(await s.execute(select(ConfigSnapshot).where(ConfigSnapshot.guild_id==guild_id,ConfigSnapshot.name==name).with_for_update())).scalar_one_or_none()
             if not row: row=ConfigSnapshot(guild_id=guild_id,created_by=created_by,name=name,payload=payload); s.add(row)
             else: row.created_by=created_by; row.payload=payload
             await s.commit(); return row
@@ -189,7 +189,7 @@ class ExtremeService:
         async with self.db.session() as s: return (await s.execute(select(Ticket).where(Ticket.channel_id==channel_id))).scalar_one_or_none()
     async def ticket_update(self,channel_id,**changes):
         async with self.db.session() as s:
-            row=(await s.execute(select(Ticket).where(Ticket.channel_id==channel_id))).scalar_one_or_none()
+            row=(await s.execute(select(Ticket).where(Ticket.channel_id==channel_id).with_for_update())).scalar_one_or_none()
             if not row: return None
             for k,v in changes.items():
                 if hasattr(row,k): setattr(row,k,v)
