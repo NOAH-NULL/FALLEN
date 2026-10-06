@@ -55,7 +55,9 @@ class GatewayWorkerPool:
         self._supervisor: asyncio.Task | None = None
         self._closing = False
         self.dlq = GatewayDeadLetterQueue(bot, dlq_maxsize)
-        self._guild_locks = [asyncio.Semaphore(self.guild_concurrency) for _ in range(256)]
+        # Serialize by actual guild ID. Hash buckets make unrelated guilds
+        # contend and can create latency spikes at scale.
+        self._guild_locks: dict[int, asyncio.Semaphore] = {}
 
     async def start(self):
         self._closing = False
@@ -109,7 +111,8 @@ class GatewayWorkerPool:
                             log.warning('rejecting gateway event with stale/missing fence guild=%s shard=%s', guild_id, shard_id)
                             continue
                         fence_token = push_fence(ctx)
-                        async with self._guild_locks[guild_id % len(self._guild_locks)]:
+                        lock = self._guild_locks.setdefault(guild_id, asyncio.Semaphore(self.guild_concurrency))
+                        async with lock:
                             if not await lease_mgr.validate_fence(shard_id, ctx.fence):
                                 continue
                             await self._dispatch(event)
@@ -118,7 +121,8 @@ class GatewayWorkerPool:
                     else:
                         if not getattr(lease_mgr, 'healthy', False):
                             continue
-                        async with self._guild_locks[guild_id % len(self._guild_locks)]:
+                        lock = self._guild_locks.setdefault(guild_id, asyncio.Semaphore(self.guild_concurrency))
+                        async with lock:
                             await self._dispatch(event)
                 else:
                     await self._dispatch(event)
