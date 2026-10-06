@@ -13,31 +13,38 @@ class Scheduler:
             try:
                 for r in await self.bot.platform.due_reminders():
                     ch=self.bot.get_channel(r.channel_id)
-                    if not ch:
-                        await self.bot.platform.release_reminder(r.id)
-                        log.warning('reminder channel unavailable id=%s channel=%s; will retry', r.id, r.channel_id)
-                        continue
+                    if ch is None:
+                        try:
+                            ch=await self.bot.fetch_channel(r.channel_id)
+                        except discord.NotFound:
+                            await self.bot.platform.complete_reminder(r.id)
+                            log.warning('reminder channel deleted id=%s channel=%s; discarded', r.id, r.channel_id)
+                            continue
+                        except Exception:
+                            await self.bot.platform.release_reminder(r.id)
+                            log.exception('reminder channel lookup failed id=%s; will retry', r.id)
+                            continue
                     try:
                         await ch.send(f'⏰ <@{r.user_id}> {r.message}')
                         await self.bot.platform.complete_reminder(r.id)
                     except discord.NotFound:
-                        await self.bot.platform.release_reminder(r.id)
-                        log.warning('reminder target disappeared id=%s; will retry', r.id)
+                        await self.bot.platform.complete_reminder(r.id)
+                        log.warning('reminder target disappeared id=%s; discarded', r.id)
                     except Exception:
                         await self.bot.platform.release_reminder(r.id)
                         log.exception('reminder delivery failed id=%s; will retry', r.id)
                 for action in await self.bot.extreme.due_actions():
                     guild=self.bot.get_guild(action.guild_id)
                     if not guild:
-                        await self.bot.extreme.release_action(action.id)
-                        log.warning('scheduled action guild unavailable id=%s; will retry', action.id)
+                        await self.bot.extreme.complete_action(action.id)
+                        log.warning('scheduled action guild unavailable id=%s; completed as unrecoverable', action.id)
                         continue
                     try:
                         if action.action == 'timeout':
                             member = guild.get_member(action.target_id)
                             if not member:
-                                await self.bot.extreme.release_action(action.id)
-                                log.warning('timeout target unavailable id=%s; will retry', action.id)
+                                await self.bot.extreme.complete_action(action.id)
+                                log.warning('timeout target unavailable id=%s; completed as already gone', action.id)
                                 continue
                             await member.timeout(None, reason='V16 temporary timeout expired')
                         elif action.action == 'ban':
