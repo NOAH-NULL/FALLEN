@@ -13,7 +13,7 @@ class LevelService:
         return max(100, (level + 1) * 100)
 
     async def add_xp(self, gid: int, uid: int, amount: int | None = None):
-        amount = amount or random.randint(8, 15)
+        amount = random.randint(8, 15) if amount is None else int(amount)
         async with self.db.session() as s:
             seed = pg_insert(Level).values(guild_id=gid, user_id=uid, xp=0, level=0).on_conflict_do_nothing(
                 index_elements=['guild_id', 'user_id']
