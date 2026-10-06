@@ -49,12 +49,8 @@ class V16Runtime:
         actions = []
 
         if settings.get('security_timeline'):
-            account_age_days = max(
-                0.0,
-                (member.created_at - member.created_at).total_seconds() / 86400,
-            )
-            # discord.py timestamps are timezone-aware. Use current UTC time
-            # for the actual account-age calculation.
+            # discord.py timestamps are timezone-aware. Calculate age from
+            # the current UTC time rather than the bot's join timestamp.
             from discord.utils import utcnow
             account_age_days = max(0.0, (utcnow() - member.created_at).total_seconds() / 86400)
             await self.bot.extreme.record_security(
