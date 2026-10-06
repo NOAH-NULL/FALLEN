@@ -22,10 +22,11 @@ class AutoModService:
     """
     HEAT_SCRIPT = """
     local key = KEYS[1]
-    local now = tonumber(ARGV[1])
-    local lambda = tonumber(ARGV[2])
-    local weight = tonumber(ARGV[3])
-    local ttl = tonumber(ARGV[4])
+    local clock = redis.call('TIME')
+    local now = tonumber(clock[1]) + (tonumber(clock[2]) / 1000000)
+    local lambda = tonumber(ARGV[1])
+    local weight = tonumber(ARGV[2])
+    local ttl = tonumber(ARGV[3])
     local data = redis.call('HMGET', key, 'score', 'last_update')
     local score = tonumber(data[1]) or 0.0
     local last = tonumber(data[2]) or now
@@ -61,7 +62,7 @@ class AutoModService:
         if self.cache is not None:
             result = await self.cache.client.eval(
                 self.HEAT_SCRIPT, 1, f'heat:{guild_id}:{user_id}',
-                time.time(), config['decay'], float(weight), config['ttl']
+                config['decay'], float(weight), config['ttl']
             )
             return float(result)
 
@@ -119,7 +120,7 @@ class AutoModService:
         for factor in factors:
             weight = float(config.get(factor, HEAT_WEIGHTS[factor]))
             if self.cache is not None:
-                result = await self.cache.client.eval(self.HEAT_SCRIPT, 1, f'heat:{guild_id}:{user_id}', time.time(), config['decay'], weight, config['ttl'])
+                result = await self.cache.client.eval(self.HEAT_SCRIPT, 1, f'heat:{guild_id}:{user_id}', config['decay'], weight, config['ttl'])
                 score = float(result)
             else:
                 score = await self.add_heat(guild_id, user_id, weight, factor)
@@ -141,7 +142,8 @@ class AutoModService:
         if not data:
             return 0.0
         config = await self.get_heat_config(guild_id)
-        now = time.time()
+        clock = await self.cache.client.time()
+        now = float(clock[0]) + float(clock[1]) / 1000000.0
         score = float(data.get('score', 0.0))
         last = float(data.get('last_update', now))
         return score * math.exp(-config['decay'] * max(0.0, now - last))
