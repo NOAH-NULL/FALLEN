@@ -1,220 +1,1152 @@
-# Fallen v0.9 — Peak Control Plane & Adaptive Security
+FALLEN v0.1
 
-Fallen v6 expands the v5 foundation into a broader community platform while keeping gateway work bounded and durable state in PostgreSQL.
+A modular Discord bot focused on moderation, security, community management, automation, and reliable infrastructure.
 
-## Major capabilities
-- Moderation + persistent case history
-- AutoMod + raid-burst detection + lockdown
-- Welcome/goodbye animated cards rendered off the gateway loop
-- Autorole + audit foundation
-- Custom commands
-- XP/levels
-- Tickets
-- Suggestions + polls
-- Reminders with durable scheduler
-- Economy primitives (balance/daily)
-- Utility/fun commands
-- External music-node boundary
-- Dashboard API (`/api/health`, `/api/stats`)
-- PostgreSQL + Redis, cache single-flight, distributed invalidation/rate limits
-- AutoShardedBot with explicit shard assignment
-- Prometheus + optional OpenTelemetry
-- Docker/Helm/CI/Alembic
-
-## Quick start
-1. Copy `.env.example` to `.env`.
-2. Put your Discord token in `.env`; never commit it.
-3. Start local infrastructure: `docker compose up -d postgres redis`.
-4. Create/activate your Python virtual environment and run `pip install -r requirements.txt`.
-5. Run `alembic upgrade head`.
-6. Start the bot with `python -m bot`.
-
-### Windows helper
-If the project is in a normal Windows folder with a `venv`, run `powershell -ExecutionPolicy Bypass -File .\scripts\start_windows.ps1`. It runs migrations and then starts the bot.
-
-### Local dependency note
-The local Python process expects PostgreSQL on `localhost:5432` and Redis on `localhost:6379`. The example environment is configured for the Docker Compose development credentials. The Compose bot container uses the internal PostgreSQL/PgBouncer and Redis service names automatically.
-
-### Discloud deployment
-For a single-process Discloud deployment, use the root `discloud.config` and `main.py`. PostgreSQL, Redis, and Lavalink must be hosted separately. See [docs/DISCLOUD.md](docs/DISCLOUD.md) for the environment variables, migration, and upload steps.
-
-### Optional action GIF providers
-Action GIFs try Giphy first when `GIPHY_API_KEY` is set, then Tenor when `TENOR_API_KEY` is set, and finally the existing OtakuGIFs provider. Giphy and Tenor require their own API keys; add either or both to `.env`. Without keys, the existing provider remains available.
+FALLEN is a Python-based Discord bot built with discord.py, PostgreSQL, Redis, and optional Lavalink music support.
 
 
 
-## v0.8 Peak Product Pass
-- Persistent lockdown snapshots restore each channel's exact @everyone send-message state instead of blindly resetting permissions.
-- Anti-nuke destructive-action bursts are observed through Discord audit logs and can trigger the existing automatic-lockdown safety path.
-- Automatic and manual lockdowns share the same state-preserving recovery engine.
-- Added a polished operator dashboard at `/dashboard` with API-key protected runtime statistics.
-- Dashboard statistics are no longer exposed without the configured `DASHBOARD_API_KEY`.
-- Shared embed styling now carries a consistent Fallen footer across command responses.
-- Added regression coverage for dashboard access, state-preserving lockdown recovery, and anti-nuke event wiring.
+The project uses a service-based architecture with bounded gateway processing, background workers, distributed coordination, persistent server data, and administrative controls.
 
-## v0.7 Product Quality Pass
-- Centralized prefix-command error handling for missing arguments, bad member/role/channel values, permissions, cooldowns, and unexpected failures.
-- Fixed the community embed helper to support thumbnails used by `/level`, `/warnings`, and profile-style commands.
-- Prefix `daily` now uses the same distributed 24-hour rate limit as the slash command.
-- Economy and XP updates use PostgreSQL conflict-safe row creation plus row locks, preventing lost updates under concurrent pods.
-- Ticket channels now grant access to configured Manage Channels roles and the bot while recording the ticket owner for safe closure.
-- Ticket closure is restricted to the creator or channel managers.
-- Lockdown/unlockdown use bounded parallelism instead of serial channel edits, while reporting partial success.
-- Custom command output suppresses accidental mentions.
-- Moderation actions now consistently emit audit-log entries after successful actions.
-- Added product-quality regression tests covering these real command paths.
+Features
 
-## V15.2 runtime fixes
-- Complete Alembic lineage through `0007_runtime_schema`.
-- Guild configuration model and database schema are aligned, including embed settings and timestamps.
-- Prefix command registration no longer collides on `levelrole`/duplicate utility commands.
-- Moderation audit logging and security raid-status use valid service APIs.
-- Invite attribution retries queued persistence after transient database errors.
-- Reminder claiming uses PostgreSQL row locking to avoid duplicate delivery across workers.
+🛡️ Moderation
 
-## Scale discipline
-No source-code project can honestly promise a server count. Capacity depends on gateway traffic, event mix, database hardware, Redis topology, shard count, API rate limits, image workload, and deployment design. Load-test before production.
+Ban
 
-## v7 architecture hardening
-- Gateway callbacks are bounded O(1) producers into a local queue; database, image rendering, moderation workflows, and XP writes execute in workers.
-- Anti-raid uses an atomic Redis sorted-set window, so join bursts are visible across pods/shards.
-- Guild config uses local single-flight plus a Redis distributed lock and Pub/Sub invalidation to prevent cache stampedes.
-- Every shard has a Redis lease; duplicate shard ownership fails fast. In multi-pod deployments, assign non-overlapping `SHARD_IDS` per pod.
-- Redis Streams are available for durable background-event extensions; Pub/Sub remains notification-only.
-- Generated `__pycache__`, `.pyc`, and `.pytest_cache` artifacts are excluded from the release.
+Kick
 
-## V7 Enterprise hardening
-- Gateway processing uses a fixed worker pool; inbound events never create one asyncio Task each.
-- Guild work is serialized through fixed lock stripes to bound memory while allowing cross-guild concurrency.
-- Redis shard leases fail closed: a renewal failure marks the instance unhealthy and initiates shutdown.
-- PgBouncer support is included for transaction-pooled PostgreSQL connections; enable `DB_USE_PGBOUNCER=true` and point `DATABASE_URL` at the PgBouncer service.
-- Guild configuration reads use local single-flight plus a Redis distributed lock, so concurrent cache misses do not fan out into PostgreSQL queries.
+Timeout / mute
 
-## Extreme failure hardening (v0.3)
-- Cross-pod guild cache misses use a Redis distributed single-flight lock with lock renewal; local single-flight only reduces same-process contention.
-- Shard ownership now uses monotonically increasing Redis fencing epochs. Workers validate the epoch before dispatch and the database session rejects stale fenced commits; fenced cache writes are checked atomically in Redis.
-- Gateway ingestion remains bounded and non-blocking, with reserved critical capacity, stale-event shedding, and an 8-event fairness window so critical floods cannot starve normal traffic forever.
-- Worker exceptions become bounded dead-letter records and are also persisted to a capped Redis Stream (`gateway-dlq`) when Redis is available. Poison events are not retried indefinitely.
-- PgBouncer transaction pooling disables asyncpg prepared-statement caching when `DB_USE_PGBOUNCER=true`.
-- Helm health/metrics ports are explicitly wired to the application (`8080` health, `9100` metrics), avoiding probe/service drift.
-- The test suite includes cross-instance single-flight, lease epoch replacement, stale-fence rejection paths, bounded worker behavior, fairness, and DLQ handling.
+Unmute
 
-## Prefix / text commands
-The default text-command prefix is `,` and can be changed with `COMMAND_PREFIX`.
+Warnings
 
-- `,hug @member` / `,Hug @member`
-- `,kill @member` — harmless cartoon gag
-- `,ban @member [reason]`
-- `,mute @member [minutes] [reason]` / `,m`
-- `,unmute @member` / `,un`
-- `,play <query>` / `,p`
-- `,stop` / `,s`
+Moderation cases
 
-Moderation commands respect Discord permissions and role hierarchy. Music playback uses Wavelink with an external Lavalink v4 node. Set `LAVALINK_URL` and `LAVALINK_PASSWORD` in `.env` to connect; the node must be reachable by the bot and have plugins configured for the media sources you want. The player stays connected while the bot process is running, including when its queue is empty. Queue state and voice sessions are not restored after a process restart. Playback latency and source availability depend on the Lavalink host, network, and its plugins.
+Message cleanup
 
-Music commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/stop` and `,play`, `,skip`, `,pause`, `,resume`, `,queue`, `,stop`.
+Slowmode
 
-## Prefix commands
-Every user-facing slash command also has a prefix/text equivalent using `COMMAND_PREFIX` (default `,`). Grouped slash commands keep their grouped text form too, for example:
+Channel lockdown / unlock
 
-- `,ping`, `,health`, `,level`, `,serverinfo`, `,avatar`
-- `,warn`, `,warnings`, `,timeout`, `,ban`, `,kick`, `,clear`, `,slowmode`, `,lock`, `,unlock`
-- `,mute` / `,m`, `,unmute` / `,un`, `,play` / `,p`, `,stop` / `,s`
-- `,config autorole|logs|automod`
-- `,settings welcome-channel|goodbye-channel|automod|autorole`
-- `,greeting channel|message|test`
-- `,custom set|remove`
-- `,engage poll|8ball|choose`
-- `,security raid-status|lockdown|unlockdown`
+Moderation logging
 
-Friendly/OwO-style interaction commands such as `,hug`, `,pat`, `,poke`, `,bonk`, `,slap`, `,cuddle`, `,wave`, and `,highfive` use GIF responses. The GIF provider is external and has a text-safe fallback if it is unavailable.
+Permission and role-hierarchy checks
 
-### V10 leveling and UwU
-- Use `,uwu @member` or `/uwu @member` for a GIF-based UwU interaction targeting a real member.
-- XP is persisted per guild/member. Use `,level [@member]` or `/level [member]` to view progress.
-- Configure automatic level rewards with `,levelrole add <level> @role`, `,levelrole remove <level>`, or `,levelrole list`.
-- The corresponding slash commands are `/levelrole`, `/levelrole-remove`, and `/levelroles`.
-- The bot only assigns roles below its highest role and ignores managed roles.
+🔐 Security
 
-## Custom welcome/goodbye banners
+Anti-raid tracking
 
-Greeting cards support per-server custom static images and animated GIFs. Configure them with either slash commands or the `,` prefix commands:
+Raid status
 
-- `/greeting banner welcome` with an image/GIF attachment or URL
-- `/greeting banner goodbye` with an image/GIF attachment or URL
-- `/greeting banner-reset welcome`
-- `,greeting banner welcome` with an attached image/GIF
-- `,greeting banner welcome https://example.com/banner.gif`
-- `,greeting banner-reset welcome`
+Automatic lockdown
 
-Animated GIF backgrounds are preserved frame-by-frame when the member avatar and custom message are rendered onto the card.
+Manual lockdown
 
-### Welcome / Goodbye embed cards
-Fallen can send the rendered welcome/goodbye banner or GIF together with a customizable Discord embed. Embed title, description, color, and enabled state are stored per guild. The embed can use `{mention}`, `{name}`, `{username}`, `{server}`, `{count}`, and `{membercount}` placeholders.
+Destructive-action detection
 
-## V13 concurrency hardening
+Member quarantine
 
-V13 adds explicit high-load protections:
-- Cross-pod cache single-flight uses a Redis lease with renewal; local lock entries are reference-counted and garbage-collected when idle.
-- Shard leases use a fresh random ownership token on every acquisition/release cycle, so a restarted instance cannot accidentally renew a previous lease token.
-- Gateway events carry enqueue timestamps; stale normal-priority events are shed instead of allowing unbounded latency. Critical command/security events retain reserved capacity.
-- Gateway workers remain fixed-size and per-guild serialized; no task-per-event fanout is used.
-- PgBouncer transaction pooling remains compatible with the current codebase because asyncpg statement caching is disabled when enabled, and the bot does not depend on LISTEN/NOTIFY or session advisory locks.
+Security snapshots
 
-These controls improve failure behavior but do not claim mathematical distributed consensus or automatic shard assignment. A production 100k+ guild deployment still requires real multi-pod load/chaos testing.
+Best-effort resource recovery
 
-## V13 concurrency hardening
+Security event handling
 
-V13 adds explicit high-load protections:
-- Cross-pod cache single-flight uses a Redis lease with renewal; local lock entries are reference-counted and removed when idle.
-- Shard leases use a fresh random ownership token on every acquisition cycle, preventing an old instance from renewing a later lease.
-- Gateway events carry enqueue timestamps; stale normal-priority events are shed instead of allowing unbounded latency. Critical events retain reserved capacity.
-- Gateway workers remain fixed-size and per-guild serialized; no task-per-event fanout is used.
-- PgBouncer transaction pooling remains compatible with the current codebase because asyncpg statement caching is disabled when enabled, and the bot does not use LISTEN/NOTIFY or session advisory locks.
-- This is hardened failure behavior, not a claim of mathematical distributed consensus; 100k+ guild deployments still require real multi-pod load and chaos tests.
+Redis-backed moderation/security state
 
-## V14 user-facing features
-V14 adds persistent invite tracking, invite leaderboard commands, inviter placeholders for welcome/goodbye cards, and a broader prefix-command mirror. Welcome cards can combine a custom static/animated banner with a Discord embed. Friendly interaction commands remain GIF-based.
+👋 Welcome & Goodbye
 
-## V15 burst-resilience hardening
-V15 focuses on high-volume join and raid behavior rather than only adding commands:
-- Invite attribution is removed from the critical member-join path and handled by a bounded worker queue.
-- Redis-backed invite snapshots use distributed single-flight refresh locks to avoid per-pod `guild.invites()` stampedes.
-- Invite join/leave statistics are buffered in Redis hashes and periodically flushed to PostgreSQL with batched upserts.
-- Member-to-inviter attribution is retained in Redis immediately and persisted to PostgreSQL through a bounded batch writer, allowing accurate leave accounting.
-- Anti-raid detection runs before expensive welcome rendering; when a raid threshold is reached, welcome work is automatically shed.
-- Greeting jobs have a bounded queue and stale-event expiry so a backlog cannot grow without limit.
-- Redis remains a cache/buffer; PostgreSQL remains the durable source of truth.
+Welcome messages
 
-## Fallen V16 development notes
+Goodbye messages
 
-V16 adds a dynamic help directory in both interfaces:
+Custom welcome channels
 
-- `,help` (aliases: `,commands`, `,cmds`) displays registered prefix commands in button-paginated pages.
-- `,help <command>` displays usage, aliases, parent group and description.
-- `/help` displays registered application commands in an ephemeral paginated menu.
-- `/help <command>` displays details for a registered slash command.
-- The directory is generated from commands actually loaded at runtime. It does not count roadmap items or advertise placeholder commands as implemented.
+Custom goodbye channels
 
-The 600+ command target is a product scope, not a reason to generate hundreds of empty command stubs. Each command must be implemented and tested before it is exposed in help. Existing modules are being retained as the base and expanded incrementally.
+Custom static banners
+
+Custom animated GIF banners
+
+Custom embeds
+
+Member/server placeholders
+
+Background greeting workers
+
+Invite attribution support
 
 
-## Product Hardening (v0.6)
 
-- Consistent embed-based success, warning, info and error responses.
-- Global application-command error handling with permission, cooldown and validation messages.
-- Moderation actions now create moderation cases for auditability.
-- Custom commands support set/use/remove/list flows and suppress accidental mass mentions.
-- Daily rewards are rate-limited across pods.
-- Unsupported music playback no longer pretends a request was executed.
-- Release packaging excludes Python bytecode and local test artifacts.
+Supported placeholders include:
+
+{mention}
+{name}
+{username}
+{server}
+{count}
+{membercount}
 
 
-## v0.9 Peak Control Plane
-- Redis Lua exponential-decay multi-factor moderation heat engine.
-- Configurable per-guild heat weights, decay and TTL through the authenticated control plane.
-- Rogue-staff quarantine with permission stripping and best-effort resource restoration.
-- Baseline security snapshots plus recovery endpoints.
-- Authenticated `/api/v1/guilds/{guild_id}/audit-logs`, `/snapshots`, `/snapshots/restore`, and `/automod/rules` endpoints.
-- Dashboard accepts the configured credential as a Bearer token or `X-Dashboard-Key`.
-- 63 automated tests passing in the release build.
+🎖️ Leveling
+
+Per-guild XP
+
+Member levels
+
+Level progress
+
+Automatic level-role rewards
+
+Level-role configuration
+
+💰 Economy
+
+Member balances
+
+Daily rewards
+
+Persistent PostgreSQL storage
+
+Distributed daily rate limiting
+
+🎫 Tickets
+
+Ticket creation
+
+Ticket closure
+
+Ticket ownership
+
+Staff access
+
+Configurable management permissions
+
+💡 Community
+
+Suggestions
+
+Polls
+
+8ball
+
+Choose
+
+Coin flip
+
+Custom commands
+
+Server information
+
+Avatar lookup
+
+Ping
+
+Health status
+
+🎉 Friendly Interaction Commands
+
+FALLEN includes harmless interaction commands such as:
+
+,hug
+,pat
+,poke
+,bonk
+,slap
+,cuddle
+,wave
+,highfive
+
+
+These commands use GIF responses when an available GIF provider can respond.
+
+🎵 Music
+
+FALLEN currently includes optional music support through:
+
+
+
+Wavelink
+
+Lavalink v4
+
+Queue management
+
+Play
+
+Skip
+
+Pause
+
+Resume
+
+Queue
+
+Stop
+
+Music status
+
+
+
+Music requires an externally hosted Lavalink v4 node.
+
+
+
+Without a reachable Lavalink node, music remains unavailable while the rest of the bot can continue operating.
+
+Command Prefix
+
+FALLEN's current prefix command system uses:
+
+,
+
+
+Examples:
+
+,help
+,ping
+,health
+,ban @user
+,kick @user
+,timeout @user 10
+,warn @user reason
+,level
+,balance
+,daily
+,ticket
+,play song
+
+
+The repository contains COMMAND_PREFIX in .env.example, but the current Settings implementation uses a hardcoded comma.
+
+
+
+Therefore, , is the actual prefix in the current codebase.
+
+
+
+If configurable prefixes are added later, this README should be updated at the same time.
+
+Slash Commands
+
+FALLEN also provides application/slash commands.
+
+
+
+Examples include:
+
+/ping
+/health
+/level
+/serverinfo
+/avatar
+
+/warn
+/warnings
+/timeout
+/ban
+/kick
+/clear
+/slowmode
+/lock
+/unlock
+
+/play
+/skip
+/pause
+/resume
+/queue
+/stop
+
+
+Grouped commands are also available for configuration, security, greetings, leveling, and other systems.
+
+
+
+Use:
+
+/help
+
+
+or:
+
+,help
+
+
+to view commands available in the running bot.
+
+Requirements
+
+FALLEN requires:
+
+
+
+Python 3.12+
+
+PostgreSQL
+
+Redis
+
+Discord Bot Token
+
+
+
+Optional:
+
+
+
+Lavalink v4 for music
+
+OpenTelemetry collector for telemetry
+
+
+
+The repository currently targets:
+
+Python >= 3.11 and < 3.15
+
+
+The included Docker image uses Python 3.12.
+
+Installation
+
+Clone the repository:
+
+git clone https://github.com/NOAH-NULL/FALLEN.git
+
+
+Enter the project:
+
+cd FALLEN
+
+
+Create a virtual environment:
+
+Linux / macOS
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+
+Windows
+
+python -m venv .venv
+.venv\Scripts\activate
+
+
+Install dependencies:
+
+pip install -r requirements.txt
+
+
+Configuration
+
+Create a .env file in the repository root.
+
+
+
+A starting point can be copied from:
+
+.env.example
+
+
+Required values include:
+
+DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN
+
+DATABASE_URL=postgresql+asyncpg://discordbot:discordbot@localhost:5432/discordbot
+
+REDIS_URL=redis://localhost:6379/0
+
+
+For Docker Compose, also configure:
+
+POSTGRES_USER=discordbot
+POSTGRES_PASSWORD=CHANGE_THIS
+POSTGRES_DB=discordbot
+
+
+Optional music configuration:
+
+LAVALINK_URL=
+LAVALINK_PASSWORD=
+
+
+Optional dashboard configuration:
+
+DASHBOARD_API_KEY=
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8081
+
+
+Do not commit .env or any secret credentials.
+
+Database Migration
+
+Before starting the bot for the first time, run:
+
+alembic upgrade head
+
+
+This applies the current database migrations.
+
+
+
+When the database schema changes in a future release, run the migration command again before starting the updated bot.
+
+Minimal Local Startup
+
+For a local development setup, PostgreSQL and Redis must be available.
+
+
+
+If Docker is installed, start the required services:
+
+docker compose up -d postgres redis
+
+
+Check them:
+
+docker compose ps
+
+
+Then run the migrations:
+
+alembic upgrade head
+
+
+Finally start FALLEN:
+
+python main.py
+
+
+The complete basic startup is:
+
+docker compose up -d postgres redis
+alembic upgrade head
+python main.py
+
+
+Alternative Startup
+
+The package also provides a module entrypoint:
+
+python -m bot
+
+
+The root main.py is the recommended simple entrypoint:
+
+python main.py
+
+
+Docker
+
+The repository includes a complete Docker Compose environment.
+
+
+
+The Compose stack contains:
+
+FALLEN bot
+PostgreSQL
+PgBouncer
+Redis
+OpenTelemetry Collector
+
+
+Start the full stack:
+
+docker compose up -d
+
+
+View status:
+
+docker compose ps
+
+
+View bot logs:
+
+docker compose logs -f bot
+
+
+View all logs:
+
+docker compose logs -f
+
+
+Stop the stack:
+
+docker compose down
+
+
+Persistent PostgreSQL and Redis volumes are defined by the Compose configuration.
+
+Architecture
+
+FALLEN separates gateway ingestion, command handling, services, background workers, and persistence.
+
+                    Discord
+                       │
+                       ▼
+              Discord Gateway
+                       │
+                       ▼
+             Gateway Event Queue
+                       │
+                       ▼
+                 Worker Pool
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+      Commands     Security     Community
+          │            │            │
+          └────────────┼────────────┘
+                       │
+                       ▼
+                   Services
+                       │
+             ┌─────────┴─────────┐
+             │                   │
+             ▼                   ▼
+        PostgreSQL             Redis
+
+
+The gateway layer uses bounded queues and worker processing rather than creating an unlimited task for every incoming event.
+
+
+
+Guild work can be serialized to prevent conflicting operations from the same guild from running concurrently.
+
+Redis
+
+Redis is used for several runtime systems, including:
+
+
+
+Caching
+
+Distributed locks
+
+Rate limiting
+
+Pub/Sub invalidation
+
+Anti-raid tracking
+
+Shard leases
+
+Distributed coordination
+
+Temporary state
+
+Background-event buffering
+
+
+
+Redis is not intended to replace PostgreSQL as the durable source of truth.
+
+PostgreSQL
+
+PostgreSQL stores persistent application data such as:
+
+
+
+Guild configuration
+
+Moderation cases
+
+Warnings
+
+Economy balances
+
+XP and levels
+
+Level-role configuration
+
+Tickets
+
+Suggestions
+
+Reminders
+
+Invite information
+
+Security data
+
+Other persistent bot state
+
+
+
+Alembic is used for schema migrations.
+
+Distributed Gateway Safety
+
+FALLEN includes infrastructure for running gateway workers safely.
+
+
+
+Important mechanisms include:
+
+
+
+Shard leases
+
+Fencing epochs
+
+Redis coordination
+
+Bounded event queues
+
+Critical-event capacity
+
+Normal-event shedding
+
+Worker pools
+
+Per-guild concurrency control
+
+Dead-letter handling
+
+Graceful shutdown
+
+
+
+In multi-instance deployments, shard ownership must be configured carefully.
+
+
+
+The environment supports:
+
+INSTANCE_ID=
+SHARD_IDS=
+SHARD_COUNT=
+
+
+Each instance must use appropriate, non-overlapping shard ownership when manually assigning shards.
+
+Gateway Overload Protection
+
+The gateway queue has separate capacity for critical events.
+
+
+
+Critical events can include command and security-related work.
+
+
+
+Normal events can be shed when the system is overloaded instead of allowing the queue to grow without bound.
+
+
+
+This is intended to keep the bot responsive during high traffic.
+
+Dashboard
+
+FALLEN includes an HTTP dashboard/control API.
+
+
+
+The current implementation exposes endpoints for areas such as:
+
+/api/health
+/api/stats
+
+
+and authenticated guild/security operations.
+
+
+
+Dashboard authentication uses the configured:
+
+DASHBOARD_API_KEY=
+
+
+The dashboard should not be exposed publicly without appropriate authentication and network protection.
+
+Health & Metrics
+
+The application provides health and metrics configuration.
+
+
+
+Defaults include:
+
+HEALTH_PORT=8080
+METRICS_PORT=9100
+
+
+Prometheus metrics are supported.
+
+
+
+OpenTelemetry can optionally be enabled:
+
+OTEL_ENABLED=true
+
+
+and configured with:
+
+OTEL_EXPORTER_OTLP_ENDPOINT=
+OTEL_SERVICE_NAME=
+
+
+Music Setup
+
+Music requires an external Lavalink v4 server.
+
+
+
+Configure:
+
+LAVALINK_URL=YOUR_LAVALINK_URL
+LAVALINK_PASSWORD=YOUR_LAVALINK_PASSWORD
+
+
+The Lavalink server must be reachable by FALLEN.
+
+
+
+Music availability depends on the Lavalink server, network connection, and its configured plugins/sources.
+
+
+
+FALLEN does not run Lavalink as part of the Docker Compose stack.
+
+
+
+Music state is currently in-memory.
+
+
+
+A bot restart does not restore:
+
+
+
+Music queues
+
+Active voice sessions
+
+Current playback state
+
+Discloud Deployment
+
+The repository includes:
+
+discloud.config
+
+
+The current configuration uses:
+
+NAME=Fallen
+TYPE=bot
+MAIN=main.py
+RAM=512
+VERSION=latest
+
+
+Discloud runs the bot process but does not provide this repository's PostgreSQL, Redis, or Lavalink services.
+
+
+
+These services must be hosted separately.
+
+
+
+Required Discloud environment variables include:
+
+DISCORD_TOKEN=
+DATABASE_URL=
+REDIS_URL=
+LAVALINK_URL=
+LAVALINK_PASSWORD=
+
+
+The PostgreSQL URL should use:
+
+postgresql+asyncpg://
+
+
+Run the database migration against the hosted database before starting the bot:
+
+alembic upgrade head
+
+
+See:
+
+docs/DISCLOUD.md
+
+
+for the repository's deployment-specific instructions.
+
+Project Structure
+
+FALLEN/
+│
+├── bot/
+│   ├── commands/
+│   │   ├── ...
+│   │   └── text.py
+│   │
+│   ├── core/
+│   │   ├── bot.py
+│   │   ├── config.py
+│   │   ├── event_queue.py
+│   │   ├── shard_lease.py
+│   │   └── ...
+│   │
+│   ├── services/
+│   ├── workers/
+│   ├── web/
+│   └── ...
+│
+├── alembic/
+├── deploy/
+├── docs/
+├── observability/
+├── scripts/
+├── tests/
+│
+├── .env.example
+├── alembic.ini
+├── Dockerfile
+├── docker-compose.yml
+├── discloud.config
+├── main.py
+├── pyproject.toml
+├── requirements.txt
+└── README.md
+
+
+Testing
+
+Run the test suite with:
+
+pytest
+
+
+The repository configures pytest with coverage reporting.
+
+
+
+Tests cover areas including:
+
+
+
+Commands
+
+Gateway processing
+
+Worker behavior
+
+Redis coordination
+
+Distributed locking
+
+Shard leases
+
+Fencing
+
+Rate limiting
+
+Security
+
+Moderation
+
+Failure handling
+
+Shutdown behavior
+
+Database/service behavior
+
+Development
+
+Recommended development flow:
+
+git clone https://github.com/NOAH-NULL/FALLEN.git
+cd FALLEN
+
+python -m venv .venv
+
+
+Activate the environment, then:
+
+pip install -r requirements.txt
+
+
+Start PostgreSQL and Redis:
+
+docker compose up -d postgres redis
+
+
+Apply migrations:
+
+alembic upgrade head
+
+
+Run the bot:
+
+python main.py
+
+
+Run tests:
+
+pytest
+
+
+Troubleshooting
+
+Bot does not start
+
+Check that .env exists and contains:
+
+DISCORD_TOKEN=
+DATABASE_URL=
+REDIS_URL=
+
+
+Then verify PostgreSQL and Redis are reachable.
+
+Database connection error
+
+Check:
+
+docker compose ps
+
+
+and verify:
+
+DATABASE_URL=postgresql+asyncpg://...
+
+
+If using Docker locally, make sure PostgreSQL is running.
+
+Redis connection error
+
+Verify Redis is running:
+
+docker compose ps
+
+
+and check:
+
+REDIS_URL=redis://localhost:6379/0
+
+
+for a local Python process.
+
+Migration error
+
+Run:
+
+alembic upgrade head
+
+
+against the correct database.
+
+
+
+Make sure DATABASE_URL points to the database you actually intend to modify.
+
+Music does not work
+
+Music requires a reachable Lavalink v4 node.
+
+
+
+Check:
+
+LAVALINK_URL=
+LAVALINK_PASSWORD=
+
+
+If these are empty or incorrect, the music system will not be available.
+
+
+
+The rest of FALLEN does not require music to function.
+
+Prefix commands do not work
+
+The current prefix is:
+
+,
+
+
+Try:
+
+,ping
+
+
+The current code uses a hardcoded comma in bot/core/config.py.
+
+
+
+Although .env.example contains:
+
+COMMAND_PREFIX=,
+
+
+the current configuration class does not read that variable.
+
+Security
+
+Never commit:
+
+.env
+Discord bot tokens
+Database passwords
+Redis credentials
+Lavalink passwords
+Dashboard API keys
+
+
+Use environment variables or your deployment provider's secret-management system.
+
+
+
+If a secret is accidentally committed, rotate it immediately.
+
+Production Notes
+
+FALLEN contains infrastructure intended for larger deployments, but infrastructure alone does not guarantee a specific guild count or traffic capacity.
+
+
+
+Actual capacity depends on:
+
+
+
+Discord gateway traffic
+
+Number of shards
+
+Event volume
+
+PostgreSQL performance
+
+Redis performance
+
+Network latency
+
+Discord API rate limits
+
+Worker configuration
+
+Image/GIF workload
+
+Deployment topology
+
+
+
+Load-test the actual deployment before relying on it at large scale.
+
+Current Limitations
+
+FALLEN v0.1 is an active development release.
+
+
+
+Known architectural limitations include:
+
+
+
+Discord resource recovery is best-effort.
+
+Music state is not restored after restart.
+
+Music requires an external Lavalink service.
+
+Dashboard authentication currently uses an API-key model.
+
+Prefix configuration is currently hardcoded to ,.
+
+Large multi-instance deployments require careful shard configuration.
+
+Production-scale capacity must be validated through real load testing.
+
+
+
+These limitations are documented intentionally rather than hidden behind feature claims.
+
+Version
+
+This project is being maintained as:
+
+FALLEN v0.1
+
+
+The public project version should remain consistent across:
+
+
+
+README.md
+
+pyproject.toml
+
+release tags
+
+deployment documentation
+
+
+
+If the repository is being reset to v0.1, set the package version in pyproject.toml to:
+
+version = "0.1.0"
+
+
+Do not keep older v0.9, v1.x, v3.x, or historical version sections in the README.
+
+Roadmap
+
+v0.1
+
+Focus on making the existing systems reliable and usable:
+
+
+
+Moderation
+
+Security
+
+Community features
+
+Leveling
+
+Economy
+
+Tickets
+
+Suggestions
+
+Welcome/goodbye
+
+Reminders
+
+Music
+
+Dashboard
+
+PostgreSQL persistence
+
+Redis infrastructure
+
+Gateway reliability
+
+Testing
+
+Deployment support
+
+
+
+Future versions should prioritize reliability, usability, and polishing existing systems before adding unnecessary feature sprawl.
+
+License
+
+See the repository license file for the current licensing terms.
+
+FALLEN v0.1
+
+Moderation. Security. Community. Reliability.
