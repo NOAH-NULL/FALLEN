@@ -18,7 +18,7 @@ class Settings:
     otel_service_name: str=os.getenv('OTEL_SERVICE_NAME','titan-discord-bot')
     token:str=os.getenv('DISCORD_TOKEN','')
     guild_id:int|None=_i('GUILD_ID',0) or None
-    command_prefix:str=','
+    command_prefix:str=os.getenv('COMMAND_PREFIX',',')
     database_url:str=os.getenv('DATABASE_URL','postgresql+asyncpg://bot:bot@localhost:5432/discordbot')
     redis_url:str=os.getenv('REDIS_URL','redis://localhost:6379/0')
     redis_max_connections:int=_i('REDIS_MAX_CONNECTIONS',100)
