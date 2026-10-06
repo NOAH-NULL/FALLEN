@@ -101,9 +101,6 @@ class AutoModService:
         if self.cache is not None and clean:
             await self.cache.client.hset(f'heat-config:{guild_id}', mapping={k: str(v) for k,v in clean.items()})
             await self.cache.expire(f'heat-config:{guild_id}', 86400 * 30)
-        if 'decay' in clean: self.decay_lambda = float(clean['decay'])
-        if 'ttl' in clean: self.ttl = int(clean['ttl'])
-        HEAT_WEIGHTS.update({k: float(v) for k,v in clean.items() if k in HEAT_WEIGHTS})
         return await self.get_heat_config(guild_id)
 
     async def observe(self, guild_id, user_id, content, mention_count=0, attachment_count=0, spam=False):
