@@ -66,11 +66,36 @@ class ExtremeService:
         async with self.db.session() as s:
             row=ScheduledAction(guild_id=guild_id,target_id=target_id,action=action,run_at=run_at,payload=payload or {}); s.add(row); await s.commit(); return row.id
     async def due_actions(self,now=None,limit=100):
+        """Return due actions without marking them complete.
+
+        Delivery is an external side effect, so completion is recorded only
+        after Discord confirms the operation. This makes transient failures
+        retryable instead of permanently losing scheduled actions.
+        """
         now=now or datetime.now(timezone.utc)
         async with self.db.session() as s:
-            rows=list((await s.execute(select(ScheduledAction).where(ScheduledAction.executed.is_(False),ScheduledAction.run_at<=now).order_by(ScheduledAction.run_at).limit(limit))).scalars())
-            for row in rows: row.executed=True
-            await s.commit(); return rows
+            result = await s.execute(
+                select(ScheduledAction)
+                .where(ScheduledAction.executed.is_(False), ScheduledAction.run_at <= now)
+                .order_by(ScheduledAction.run_at)
+                .limit(limit)
+            )
+            return list(result.scalars())
+
+    async def complete_action(self, action_id: int):
+        async with self.db.session() as s:
+            result = await s.execute(
+                select(ScheduledAction).where(
+                    ScheduledAction.id == action_id,
+                    ScheduledAction.executed.is_(False),
+                ).with_for_update()
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return False
+            row.executed = True
+            await s.commit()
+            return True
     async def upsert_automod_rule(self,guild_id,name,kind,pattern='',action='delete',config=None,enabled=True):
         async with self.db.session() as s:
             row=(await s.execute(select(AutoModRule).where(AutoModRule.guild_id==guild_id,AutoModRule.name==name))).scalar_one_or_none()
