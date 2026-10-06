@@ -44,7 +44,8 @@ class Scheduler:
                             # Banned users are commonly absent from the member cache.
                             await guild.unban(discord.Object(id=action.target_id), reason='V16 temporary ban expired')
                         else:
-                            log.warning('unknown scheduled action id=%s action=%s', action.id, action.action)
+                            await self.bot.extreme.release_action(action.id)
+                            log.warning('unknown scheduled action id=%s action=%s; released claim', action.id, action.action)
                             continue
                         await self.bot.extreme.complete_action(action.id)
                     except discord.NotFound:
