@@ -5,11 +5,13 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from bot.models import Base
+from bot.core.config import normalize_database_url
 
 load_dotenv()
 config=context.config
 url=os.getenv('DATABASE_URL') or config.get_main_option('sqlalchemy.url')
 if not url: raise RuntimeError('DATABASE_URL is required for Alembic')
+url=normalize_database_url(url)
 config.set_main_option('sqlalchemy.url', url.replace('%','%%'))
 target_metadata=Base.metadata
 
