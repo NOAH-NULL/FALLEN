@@ -23,6 +23,96 @@ class Community(commands.Cog):
         embed.add_field(name='Progress', value='▰' * progress + '▱' * (10 - progress), inline=False)
         await i.response.send_message(embed=embed)
 
+
+
+    @app_commands.command(name='rank', description='Show your XP rank in this server')
+    @app_commands.guild_only()
+    async def rank(self, i, member: discord.Member | None = None):
+        m = member or i.user
+        row = await self.bot.levels.get(i.guild_id, m.id)
+        rank = await self.bot.levels.rank(i.guild_id, m.id) if row else None
+        level = row.level if row else 0
+        xp = row.xp if row else 0
+        total = row.total_xp if row else 0
+        needed = self.bot.levels.xp_needed(level)
+        embed = info_embed(f'Rank • {m.display_name}', f'{m.mention} progress')
+        embed.add_field(name='Rank', value=f'**#{rank}**' if rank else '**Unranked**', inline=True)
+        embed.add_field(name='Level', value=f'**{level}**', inline=True)
+        embed.add_field(name='Total XP', value=f'**{total:,}**', inline=True)
+        embed.add_field(name='Progress', value=f'**{xp:,} / {needed:,}**', inline=False)
+        await i.response.send_message(embed=embed)
+
+    @app_commands.command(name='leaderboard', description='Show the server XP leaderboard')
+    @app_commands.guild_only()
+    @app_commands.describe(limit='Number of members to show')
+    async def leaderboard(self, i, limit: app_commands.Range[int, 1, 25] = 10):
+        rows = await self.bot.levels.leaderboard(i.guild_id, limit)
+        if not rows:
+            return await i.response.send_message(embed=info_embed('Leaderboard', 'No XP has been earned yet.'))
+        lines = []
+        for position, row in enumerate(rows, 1):
+            member = i.guild.get_member(row.user_id)
+            name = member.display_name if member else f'User {row.user_id}'
+            lines.append(f'**#{position}** {name} — Level **{row.level}** • **{row.total_xp:,} XP**')
+        embed = info_embed(f'{i.guild.name} • XP Leaderboard', '\n'.join(lines))
+        await i.response.send_message(embed=embed)
+
+    @app_commands.command(name='level-settings', description='Configure the server leveling system')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        enabled='Enable XP gain',
+        announce='Announce level-ups',
+        xp_min='Minimum XP per eligible message',
+        xp_max='Maximum XP per eligible message',
+        cooldown='Cooldown between XP awards in seconds',
+        channel='Optional dedicated level-up announcement channel',
+    )
+    async def level_settings(self, i, enabled: bool | None = None, announce: bool | None = None,
+                             xp_min: app_commands.Range[int, 1, 1000] | None = None,
+                             xp_max: app_commands.Range[int, 1, 1000] | None = None,
+                             cooldown: app_commands.Range[int, 1, 86400] | None = None,
+                             channel: discord.TextChannel | None = None):
+        values = {}
+        if enabled is not None: values['enabled'] = enabled
+        if announce is not None: values['announce'] = announce
+        if xp_min is not None: values['xp_min'] = xp_min
+        if xp_max is not None: values['xp_max'] = xp_max
+        if cooldown is not None: values['cooldown_seconds'] = cooldown
+        if channel is not None: values['announcement_channel_id'] = channel.id
+        if values:
+            cfg = await self.bot.levels.update_settings(i.guild_id, **values)
+        else:
+            cfg = await self.bot.levels.settings(i.guild_id)
+        embed = info_embed('Level Settings', 'Current leveling configuration.')
+        embed.add_field(name='Enabled', value=str(cfg['enabled']), inline=True)
+        embed.add_field(name='XP', value=f"{cfg['xp_min']}–{cfg['xp_max']} per eligible message", inline=True)
+        embed.add_field(name='Cooldown', value=f"{cfg['cooldown_seconds']}s", inline=True)
+        embed.add_field(name='Announcements', value=str(cfg['announce']), inline=True)
+        target = cfg['announcement_channel_id']
+        embed.add_field(name='Level-up Channel', value=f'<#{target}>' if target else 'Message channel', inline=True)
+        await i.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name='level-exclude-channel', description='Exclude a channel from XP')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    async def level_exclude_channel(self, i, channel: discord.TextChannel):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        channels = set(cfg['no_xp_channels'])
+        channels.add(channel.id)
+        await self.bot.levels.update_settings(i.guild_id, no_xp_channels=list(channels))
+        await i.response.send_message(embed=success_embed('Level exclusion added', f'{channel.mention} will no longer award XP.'), ephemeral=True)
+
+    @app_commands.command(name='level-exclude-role', description='Exclude a role from XP')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    async def level_exclude_role(self, i, role: discord.Role):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        roles = set(cfg['no_xp_roles'])
+        roles.add(role.id)
+        await self.bot.levels.update_settings(i.guild_id, no_xp_roles=list(roles))
+        await i.response.send_message(embed=success_embed('Level exclusion added', f'{role.mention} will no longer earn XP.'), ephemeral=True)
+
     @app_commands.command(name='uwuify', description='Enable or disable real-time UwUify for a member')
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_messages=True)
