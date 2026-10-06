@@ -67,12 +67,14 @@ class Community(commands.Cog):
         xp_max='Maximum XP per eligible message',
         cooldown='Cooldown between XP awards in seconds',
         channel='Optional dedicated level-up announcement channel',
+        stack_awards='Keep previous level roles when earning a new reward',
     )
     async def level_settings(self, i, enabled: bool | None = None, announce: bool | None = None,
                              xp_min: app_commands.Range[int, 1, 1000] | None = None,
                              xp_max: app_commands.Range[int, 1, 1000] | None = None,
                              cooldown: app_commands.Range[int, 1, 86400] | None = None,
-                             channel: discord.TextChannel | None = None):
+                             channel: discord.TextChannel | None = None,
+                             stack_awards: bool | None = None):
         values = {}
         if enabled is not None: values['enabled'] = enabled
         if announce is not None: values['announce'] = announce
@@ -80,6 +82,7 @@ class Community(commands.Cog):
         if xp_max is not None: values['xp_max'] = xp_max
         if cooldown is not None: values['cooldown_seconds'] = cooldown
         if channel is not None: values['announcement_channel_id'] = channel.id
+        if stack_awards is not None: values['stack_awards'] = stack_awards
         if values:
             cfg = await self.bot.levels.update_settings(i.guild_id, **values)
         else:
@@ -89,6 +92,7 @@ class Community(commands.Cog):
         embed.add_field(name='XP', value=f"{cfg['xp_min']}–{cfg['xp_max']} per eligible message", inline=True)
         embed.add_field(name='Cooldown', value=f"{cfg['cooldown_seconds']}s", inline=True)
         embed.add_field(name='Announcements', value=str(cfg['announce']), inline=True)
+        embed.add_field(name='Stack rewards', value=str(cfg['stack_awards']), inline=True)
         target = cfg['announcement_channel_id']
         embed.add_field(name='Level-up Channel', value=f'<#{target}>' if target else 'Message channel', inline=True)
         await i.response.send_message(embed=embed, ephemeral=True)
