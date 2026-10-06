@@ -30,3 +30,12 @@ def test_thresholds_are_strictly_increasing():
 
 def test_message_xp_ceiling_matches_reference_limit():
     assert LevelService.MAX_MESSAGE_XP == 75
+
+
+def test_character_count_ignores_spaces_and_punctuation():
+    assert LevelService.character_count("Hello, world! 123") == 10
+    assert LevelService.character_count("!!!") == 0
+
+
+def test_character_xp_respects_letter_count():
+    assert min(75, LevelService.character_count("hello") * 2) == 10
