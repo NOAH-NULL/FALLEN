@@ -80,20 +80,28 @@ class DistributedSingleFlight:
                             if value is not None:
                                 return value
 
-                            # Run loader while monitoring the lease health event
-                            loader_task = asyncio.create_task(loader())
-                            
-                            # Wait either for loader completion or lease loss
-                            done, pending = await asyncio.wait(
-                                [loader_task, lease_lost_event.wait()],
-                                return_when=asyncio.FIRST_COMPLETED
+                            # Monitor the loader and lease independently. asyncio.wait()
+                            # requires Tasks/Futures, not bare coroutine objects.
+                            loader_task = asyncio.create_task(loader(), name=f'cache-loader:{key}')
+                            lease_task = asyncio.create_task(
+                                lease_lost_event.wait(),
+                                name=f'cache-lease-watch:{key}',
                             )
-
-                            if lease_lost_event.is_set():
-                                loader_task.cancel()
-                                raise RuntimeError(f"Lost distributed lock lease for key '{key}' during execution.")
-
-                            value = await loader_task
+                            try:
+                                done, _ = await asyncio.wait(
+                                    {loader_task, lease_task},
+                                    return_when=asyncio.FIRST_COMPLETED,
+                                )
+                                if lease_task in done and lease_lost_event.is_set():
+                                    loader_task.cancel()
+                                    await asyncio.gather(loader_task, return_exceptions=True)
+                                    raise RuntimeError(
+                                        f"Lost distributed lock lease for key '{key}' during execution."
+                                    )
+                                value = await loader_task
+                            finally:
+                                lease_task.cancel()
+                                await asyncio.gather(lease_task, return_exceptions=True)
 
                             # The cache adapter rejects this write if the flight epoch is no longer current.
                             if hasattr(self.cache, 'set_json_flight_fenced'):
