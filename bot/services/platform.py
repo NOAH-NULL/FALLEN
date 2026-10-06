@@ -16,14 +16,26 @@ class PlatformService:
         async with self.db.session() as s:
             row=Reminder(guild_id=guild_id,user_id=user_id,channel_id=channel_id,message=message,due_at=datetime.now(timezone.utc)+timedelta(seconds=seconds)); s.add(row); await s.commit(); await s.refresh(row); return row
     async def due_reminders(self,limit=100):
+        now=datetime.now(timezone.utc)
+        stale=now-timedelta(minutes=10)
         async with self.db.session() as s:
             r=await s.execute(
                 select(Reminder)
-                .where(Reminder.delivered.is_(False), Reminder.due_at <= datetime.now(timezone.utc))
+                .where(
+                    Reminder.delivered.is_(False),
+                    Reminder.due_at <= now,
+                    (Reminder.processing.is_(False) | (Reminder.claimed_at < stale)),
+                )
                 .order_by(Reminder.due_at)
                 .limit(limit)
+                .with_for_update(skip_locked=True)
             )
-            return list(r.scalars())
+            rows=list(r.scalars())
+            for row in rows:
+                row.processing=True
+                row.claimed_at=now
+            await s.commit()
+            return rows
 
     async def complete_reminder(self, reminder_id: int):
         async with self.db.session() as s:
@@ -34,9 +46,25 @@ class PlatformService:
                 ).with_for_update()
             )
             row=r.scalar_one_or_none()
-            if row is None:
-                return False
+            if row is None: return False
             row.delivered=True
+            row.processing=False
+            row.claimed_at=None
+            await s.commit()
+            return True
+
+    async def release_reminder(self, reminder_id: int):
+        async with self.db.session() as s:
+            r=await s.execute(
+                select(Reminder).where(
+                    Reminder.id == reminder_id,
+                    Reminder.delivered.is_(False),
+                ).with_for_update()
+            )
+            row=r.scalar_one_or_none()
+            if row is None: return False
+            row.processing=False
+            row.claimed_at=None
             await s.commit()
             return True
     async def suggestion(self,guild_id,user_id,channel_id,message_id,content):
