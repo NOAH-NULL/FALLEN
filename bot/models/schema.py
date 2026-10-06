@@ -68,3 +68,17 @@ class LevelRole(Base):
     guild_id:Mapped[int]=mapped_column(BigInteger,index=True)
     level:Mapped[int]=mapped_column(Integer,index=True)
     role_id:Mapped[int]=mapped_column(BigInteger,index=True)
+
+
+class LevelSettings(Base):
+    __tablename__='level_settings'
+    guild_id:Mapped[int]=mapped_column(BigInteger,primary_key=True)
+    enabled:Mapped[bool]=mapped_column(Boolean,default=True)
+    xp_min:Mapped[int]=mapped_column(Integer,default=8)
+    xp_max:Mapped[int]=mapped_column(Integer,default=15)
+    cooldown_seconds:Mapped[int]=mapped_column(Integer,default=45)
+    announce:Mapped[bool]=mapped_column(Boolean,default=True)
+    announcement_channel_id:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
+    no_xp_roles:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
+    no_xp_channels:Mapped[list]=mapped_column(JSON,default=list,nullable=False)
+    bonus_roles:Mapped[dict]=mapped_column(JSON,default=dict,nullable=False)
