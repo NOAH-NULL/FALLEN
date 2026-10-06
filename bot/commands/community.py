@@ -57,6 +57,10 @@ class Community(commands.Cog):
         embed = info_embed(f'{i.guild.name} • XP Leaderboard', '\n'.join(lines))
         await i.response.send_message(embed=embed)
 
+    @app_commands.choices(mode=[
+        app_commands.Choice(name='Letters / characters', value='per_character'),
+        app_commands.Choice(name='Random per message', value='random'),
+    ])
     @app_commands.command(name='level-settings', description='Configure the server leveling system')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
@@ -159,10 +163,6 @@ class Community(commands.Cog):
         old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount, set_value=True)
         await i.response.send_message(embed=success_embed('XP set', f'{member.mention} now has **{total:,} total XP**.\nLevel: **{new_level}**'), ephemeral=True)
 
-    @app_commands.choices(mode=[
-        app_commands.Choice(name='Letters / characters', value='per_character'),
-        app_commands.Choice(name='Random per message', value='random'),
-    ])
     @app_commands.command(name='level-bonus', description='Give a role a leveling XP multiplier')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
