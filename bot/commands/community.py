@@ -68,13 +68,19 @@ class Community(commands.Cog):
         cooldown='Cooldown between XP awards in seconds',
         channel='Optional dedicated level-up announcement channel',
         stack_awards='Keep previous level roles when earning a new reward',
+        mode='XP mode: per_character or random',
+        xp_per_letter='XP earned for each letter in per-character mode',
+        max_letter_xp='Maximum XP from one message in per-character mode',
     )
     async def level_settings(self, i, enabled: bool | None = None, announce: bool | None = None,
                              xp_min: app_commands.Range[int, 1, 1000] | None = None,
                              xp_max: app_commands.Range[int, 1, 1000] | None = None,
                              cooldown: app_commands.Range[int, 1, 86400] | None = None,
                              channel: discord.TextChannel | None = None,
-                             stack_awards: bool | None = None):
+                             stack_awards: bool | None = None,
+                             mode: str | None = None,
+                             xp_per_letter: app_commands.Range[int, 1, 100] | None = None,
+                             max_letter_xp: app_commands.Range[int, 1, 10000] | None = None):
         values = {}
         if enabled is not None: values['enabled'] = enabled
         if announce is not None: values['announce'] = announce
@@ -83,6 +89,9 @@ class Community(commands.Cog):
         if cooldown is not None: values['cooldown_seconds'] = cooldown
         if channel is not None: values['announcement_channel_id'] = channel.id
         if stack_awards is not None: values['stack_awards'] = stack_awards
+        if mode is not None: values['message_xp_mode'] = mode
+        if xp_per_letter is not None: values['xp_per_character'] = xp_per_letter
+        if max_letter_xp is not None: values['max_character_xp'] = max_letter_xp
         if values:
             cfg = await self.bot.levels.update_settings(i.guild_id, **values)
         else:
@@ -150,6 +159,10 @@ class Community(commands.Cog):
         old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount, set_value=True)
         await i.response.send_message(embed=success_embed('XP set', f'{member.mention} now has **{total:,} total XP**.\nLevel: **{new_level}**'), ephemeral=True)
 
+    @app_commands.choices(mode=[
+        app_commands.Choice(name='Letters / characters', value='per_character'),
+        app_commands.Choice(name='Random per message', value='random'),
+    ])
     @app_commands.command(name='level-bonus', description='Give a role a leveling XP multiplier')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
