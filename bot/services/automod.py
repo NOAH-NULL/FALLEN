@@ -134,10 +134,11 @@ class AutoModService:
         data = await self.cache.hgetall(f'heat:{guild_id}:{user_id}')
         if not data:
             return 0.0
+        config = await self.get_heat_config(guild_id)
         now = time.time()
         score = float(data.get('score', 0.0))
         last = float(data.get('last_update', now))
-        return score * math.exp(-self.decay_lambda * max(0.0, now - last))
+        return score * math.exp(-config['decay'] * max(0.0, now - last))
 
     def check(self, gid, uid, content, limit=6, window=8):
         now = time.monotonic(); q = self._events[(gid, uid)]
