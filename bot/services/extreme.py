@@ -34,6 +34,7 @@ class ExtremeService:
         self.db = db
         self._settings_cache: dict[int, tuple[float, dict]] = {}
         self._settings_ttl = 1.0
+        self._rules_cache: dict[int, tuple[float, list]] = {}
     @staticmethod
     def catalog(): return deepcopy(FEATURES)
     @classmethod
@@ -139,9 +140,20 @@ class ExtremeService:
         async with self.db.session() as s:
             row=(await s.execute(select(AutoModRule).where(AutoModRule.guild_id==guild_id,AutoModRule.name==name))).scalar_one_or_none()
             if not row: row=AutoModRule(guild_id=guild_id,name=name); s.add(row)
-            row.kind=kind; row.pattern=pattern; row.action=action; row.config=config or {}; row.enabled=enabled; await s.commit(); return row
+            row.kind=kind; row.pattern=pattern; row.action=action; row.config=config or {}; row.enabled=enabled; await s.commit()
+            self._rules_cache.pop(guild_id, None)
+            return row
     async def automod_rules(self,guild_id):
-        async with self.db.session() as s: return list((await s.execute(select(AutoModRule).where(AutoModRule.guild_id==guild_id).order_by(AutoModRule.name))).scalars())
+        now=time.monotonic()
+        cached=self._rules_cache.get(guild_id)
+        if cached and now < cached[0]:
+            return list(cached[1])
+        async with self.db.session() as s:
+            rows=list((await s.execute(
+                select(AutoModRule).where(AutoModRule.guild_id==guild_id).order_by(AutoModRule.name)
+            )).scalars())
+        self._rules_cache[guild_id]=(now+2.0, rows)
+        return list(rows)
     async def profile(self,guild_id,user_id):
         async with self.db.session() as s: return (await s.execute(select(MemberProfile).where(MemberProfile.guild_id==guild_id,MemberProfile.user_id==user_id))).scalar_one_or_none()
     async def set_profile(self,guild_id,user_id,**changes):
