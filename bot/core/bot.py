@@ -175,6 +175,12 @@ class Bot(commands.AutoShardedBot):
         try:
             removable = [r for r in member.roles[1:] if r < guild.me.top_role and r != quarantine]
             if removable:
+                await self.extreme.snapshot_save(
+                    guild.id,
+                    guild.me.id if guild.me else 0,
+                    f"__quarantine__:{member.id}",
+                    {"member_id": member.id, "role_ids": [r.id for r in removable]},
+                )
                 await member.remove_roles(*removable, reason=reason)
             await member.add_roles(quarantine, reason=reason)
             await self.extreme.record_security(guild.id, "rogue_staff_quarantine", actor_id=member.id, details={"reason": reason})
