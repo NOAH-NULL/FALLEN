@@ -82,6 +82,7 @@ class Music(commands.Cog):
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @app_commands.command(name="music-status", description="Show music node and player status")
+    @app_commands.guild_only()
     async def status(self, interaction: discord.Interaction):
         node = self.bot.music.node
         if node is None:
