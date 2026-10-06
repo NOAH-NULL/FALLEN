@@ -93,18 +93,21 @@ class V16Runtime:
         settings = await self.bot.extreme.get(gid)
         rules = await self.bot.extreme.automod_rules(gid)
         reasons = []
+        content = message.content or ""
+        # Bound regex work so a malicious rule cannot monopolize a worker.
+        regex_rules = [r for r in rules if r.enabled and r.kind == 'regex']
 
         if settings.get('flood_detection') and len(q) > 6:
             reasons.append('flood')
-        if settings.get('duplicate_messages') and len(message.content) > 3:
-            if sum(1 for _, c in cq if c == message.content) >= 3:
+        if settings.get('duplicate_messages') and len(content) > 3:
+            if sum(1 for _, c in cq if c == content) >= 3:
                 reasons.append('duplicate')
-        if settings.get('emoji_spam') and len(re.findall(r'<a?:\w+:\d+>|[\U0001F300-\U0001FAFF]', message.content)) >= 12:
+        if settings.get('emoji_spam') and len(re.findall(r'<a?:\w+:\d+>|[\U0001F300-\U0001FAFF]', content)) >= 12:
             reasons.append('emoji_spam')
         if settings.get('mention_spam') and len(message.mentions) + len(message.role_mentions) >= 8:
             reasons.append('mention_spam')
 
-        urls = re.findall(r'https?://[^\s>]+', message.content)
+        urls = re.findall(r'https?://[^\s>]+', content)
         if urls and (settings.get('domain_blacklist') or settings.get('domain_whitelist')):
             blocked = {r.pattern.lower() for r in rules if r.enabled and r.kind == 'domain_blacklist'}
             allowed = {r.pattern.lower() for r in rules if r.enabled and r.kind == 'domain_whitelist'}
@@ -116,11 +119,9 @@ class V16Runtime:
                     reasons.append('domain_whitelist')
 
         if settings.get('regex_rules'):
-            for rule in rules:
-                if not rule.enabled or rule.kind != 'regex':
-                    continue
+            for rule in regex_rules[:50]:
                 try:
-                    if re.search(rule.pattern, message.content, re.I):
+                    if re.search(rule.pattern, content, re.I):
                         reasons.append('regex:' + rule.name)
                 except re.error:
                     # A malformed rule must not break message processing.
