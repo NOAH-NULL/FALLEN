@@ -32,6 +32,7 @@ from bot.core.event_queue import GatewayEventQueue
 from bot.core.shard_lease import ShardLeaseManager
 from bot.core.app_errors import handle_app_command_error
 from bot.core.prefix_errors import handle_prefix_command_error
+from bot.ui import info_embed
 log=logging.getLogger('bot')
 EXTENSIONS=('bot.commands.greeting','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.extreme')
 class Bot(commands.AutoShardedBot):
@@ -370,26 +371,63 @@ class Bot(commands.AutoShardedBot):
             try: await message.delete(); EVENTS.labels('automod_delete').inc(); await self.extreme.record_security(message.guild.id,'automod_action',actor_id=message.author.id,details={'reasons':reasons,'message_id':message.id})
             except discord.HTTPException: pass
             return
-        now=asyncio.get_running_loop().time(); key=(message.guild.id,message.author.id); last=self._xp_cooldown.get(key,0)
-        if now-last>45:
-            self._xp_cooldown[key]=now
-            if len(self._xp_cooldown)>self._xp_cap:self._xp_cooldown.clear()
-            try:
-                new_level, leveled_up, _ = await self.levels.add_xp(*key)
-                if leveled_up:
-                    member = message.guild.get_member(message.author.id)
-                    reward = await self.levels.role_for_level(message.guild.id, new_level)
-                    if member and reward:
-                        role = message.guild.get_role(reward.role_id)
-                        if role and role < message.guild.me.top_role:
-                            configured = await self.levels.configured_roles(message.guild.id)
-                            old_roles = [message.guild.get_role(r.role_id) for r in configured if r.role_id != role.id]
-                            remove = [r for r in old_roles if r and r in member.roles and r < message.guild.me.top_role]
-                            if remove:
-                                await member.remove_roles(*remove, reason=f'Level {new_level} reward')
-                            if role not in member.roles:
-                                await member.add_roles(role, reason=f'Reached level {new_level}')
-            except Exception: log.exception('level update failed')
+        try:
+            eligible, level_cfg = await self.levels.eligible(
+                message.guild.id,
+                message.channel.id,
+                {r.id for r in message.author.roles},
+            )
+            if not eligible:
+                return
+            allowed = await self.limiter.allow(
+                f"xp:{message.guild.id}:{message.author.id}",
+                1,
+                level_cfg["cooldown_seconds"],
+            )
+            if not allowed:
+                return
+
+            amount = None
+            bonus_roles = level_cfg.get("bonus_roles") or {}
+            member_role_ids = {r.id for r in message.author.roles}
+            multipliers = [
+                int(multiplier) for role_id, multiplier in bonus_roles.items()
+                if int(role_id) in member_role_ids
+            ]
+            if multipliers:
+                amount = random.randint(level_cfg["xp_min"], level_cfg["xp_max"]) * max(multipliers)
+
+            key = (message.guild.id, message.author.id)
+            new_level, leveled_up, _, total_xp = await self.levels.add_xp(*key, amount=amount)
+            if not leveled_up:
+                return
+
+            member = message.guild.get_member(message.author.id)
+            reward = await self.levels.role_for_level(message.guild.id, new_level)
+            if member and reward:
+                role = message.guild.get_role(reward.role_id)
+                if role and message.guild.me and role < message.guild.me.top_role:
+                    configured = await self.levels.configured_roles(message.guild.id)
+                    old_roles = [message.guild.get_role(r.role_id) for r in configured if r.role_id != role.id]
+                    remove = [r for r in old_roles if r and r in member.roles and r < message.guild.me.top_role]
+                    if remove:
+                        await member.remove_roles(*remove, reason=f"Level {new_level} reward")
+                    if role not in member.roles:
+                        await member.add_roles(role, reason=f"Reached level {new_level}")
+
+            if level_cfg["announce"]:
+                target = message.guild.get_channel(level_cfg["announcement_channel_id"]) if level_cfg["announcement_channel_id"] else message.channel
+                if target:
+                    embed = info_embed(
+                        "Level Up!",
+                        f"{message.author.mention} reached **Level {new_level}**!\n\nTotal XP: **{total_xp:,}**",
+                    )
+                    try:
+                        await target.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
+                    except discord.HTTPException:
+                        log.warning("level-up announcement failed guild=%s user=%s", message.guild.id, message.author.id)
+        except Exception:
+            log.exception("level update failed")
     async def close(self):
         if self.health_runner: await self.health_runner.cleanup()
         await self.music.close()
