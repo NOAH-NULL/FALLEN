@@ -33,6 +33,8 @@ class ScheduledAction(Base):
     payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     executed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    processing: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class AutoModRule(Base):
