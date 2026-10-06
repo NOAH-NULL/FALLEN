@@ -1,4 +1,4 @@
-FALLEN v0.1
+# FALLEN v0.1
 
 A modular Discord bot focused on moderation, security, community management, automation, and reliable infrastructure.
 
@@ -8,9 +8,9 @@ FALLEN is a Python-based Discord bot built with discord.py, PostgreSQL, Redis, a
 
 The project uses a service-based architecture with bounded gateway processing, background workers, distributed coordination, persistent server data, and administrative controls.
 
-Features
+# Features
 
-🛡️ Moderation
+🛡️ # Moderation
 
 Ban
 
@@ -90,7 +90,7 @@ Supported placeholders include:
 {membercount}
 
 
-🎖️ Leveling
+🎖️ # Leveling
 
 Per-guild XP
 
@@ -162,7 +162,7 @@ FALLEN includes harmless interaction commands such as:
 
 These commands use GIF responses when an available GIF provider can respond.
 
-🎵 Music
+🎵 # Music
 
 FALLEN currently includes optional music support through:
 
@@ -196,7 +196,7 @@ Music requires an externally hosted Lavalink v4 node.
 
 Without a reachable Lavalink node, music remains unavailable while the rest of the bot can continue operating.
 
-Command Prefix
+# Command Prefix
 
 FALLEN's current prefix command system uses:
 
@@ -277,7 +277,7 @@ or:
 
 to view commands available in the running bot.
 
-Requirements
+# Requirements
 
 FALLEN requires:
 
@@ -322,7 +322,7 @@ Enter the project:
 cd FALLEN
 
 
-Create a virtual environment:
+ Create a virtual environment:
 
 Linux / macOS
 
@@ -335,8 +335,7 @@ Windows
 python -m venv .venv
 .venv\Scripts\activate
 
-
-Install dependencies:
+# Install dependencies:
 
 pip install -r requirements.txt
 
@@ -546,11 +545,11 @@ Background-event buffering
 
 
 
-Redis is not intended to replace PostgreSQL as the durable source of truth.
+# Redis is not intended to replace PostgreSQL as the durable source of truth.
 
 PostgreSQL
 
-PostgreSQL stores persistent application data such as:
+# PostgreSQL stores persistent application data such as:
 
 
 
@@ -584,11 +583,11 @@ Alembic is used for schema migrations.
 
 Distributed Gateway Safety
 
-FALLEN includes infrastructure for running gateway workers safely.
+# FALLEN includes infrastructure for running gateway workers safely.
 
 
 
-Important mechanisms include:
+# Important mechanisms include:
 
 
 
@@ -643,7 +642,7 @@ Normal events can be shed when the system is overloaded instead of allowing the 
 
 This is intended to keep the bot responsive during high traffic.
 
-Dashboard
+# Dashboard
 
 FALLEN includes an HTTP dashboard/control API.
 
@@ -764,7 +763,7 @@ LAVALINK_URL=
 LAVALINK_PASSWORD=
 
 
-The PostgreSQL URL should use:
+# The PostgreSQL URL should use:
 
 postgresql+asyncpg://
 
@@ -970,7 +969,7 @@ The rest of FALLEN does not require music to function.
 
 Prefix commands do not work
 
-The current prefix is:
+# The current prefix is:
 
 ,
 
@@ -1078,7 +1077,7 @@ This project is being maintained as:
 FALLEN v0.1
 
 
-The public project version should remain consistent across:
+# The public project version should remain consistent across:
 
 
 
