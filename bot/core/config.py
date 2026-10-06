@@ -9,6 +9,14 @@ def _i(k,d):
 
 def _b(k,d=False): return os.getenv(k,str(d)).lower() in {'1','true','yes','on'}
 
+def normalize_database_url(url: str) -> str:
+    """Normalize Railway/standard PostgreSQL URLs for SQLAlchemy asyncio."""
+    if url.startswith('postgres://'):
+        return 'postgresql+asyncpg://' + url[len('postgres://'):]
+    if url.startswith('postgresql://'):
+        return 'postgresql+asyncpg://' + url[len('postgresql://'):]
+    return url
+
 @dataclass(frozen=True)
 class Settings:
     log_level: str=os.getenv('LOG_LEVEL','INFO')
@@ -19,7 +27,7 @@ class Settings:
     token:str=os.getenv('DISCORD_TOKEN','')
     guild_id:int|None=_i('GUILD_ID',0) or None
     command_prefix:str=os.getenv('COMMAND_PREFIX',',')
-    database_url:str=os.getenv('DATABASE_URL','postgresql+asyncpg://bot:bot@localhost:5432/discordbot')
+    database_url:str=normalize_database_url(os.getenv('DATABASE_URL','postgresql+asyncpg://bot:bot@localhost:5432/discordbot'))
     redis_url:str=os.getenv('REDIS_URL','redis://localhost:6379/0')
     redis_max_connections:int=_i('REDIS_MAX_CONNECTIONS',100)
     cache_ttl_seconds:int=_i('CACHE_TTL_SECONDS',600)
