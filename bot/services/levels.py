@@ -72,6 +72,9 @@ class LevelService:
             clean["xp_min"] = max(1, min(1000, int(clean["xp_min"])))
         if "xp_max" in clean:
             clean["xp_max"] = max(clean.get("xp_min", 1), min(1000, int(clean["xp_max"])))
+        elif "xp_min" in clean:
+            current = await self.settings(gid)
+            clean["xp_min"] = min(clean["xp_min"], current["xp_max"])
         if "cooldown_seconds" in clean:
             clean["cooldown_seconds"] = max(1, min(86400, int(clean["cooldown_seconds"])))
         if "no_xp_roles" in clean:
