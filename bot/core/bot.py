@@ -214,7 +214,9 @@ class Bot(commands.AutoShardedBot):
         if len(q) >= 3:
             member = guild.get_member(actor_id)
             if member and await self.extreme.enabled(guild.id, "automatic_lockdown"):
-                await self.snapshot_security_state(guild, member.id)
+                # Keep the durable baseline captured at startup. Taking a
+                # new snapshot after the destructive event would snapshot the
+                # compromised state and make restoration ineffective.
                 await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
                 await self.restore_deleted_resource(guild, resource, action) if resource else None
                 await self.restore_security_state(guild)
