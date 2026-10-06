@@ -388,7 +388,13 @@ class Bot(commands.AutoShardedBot):
             if not allowed:
                 return
 
-            amount = None
+            amount = await self.levels.calculate_message_xp(
+                message.guild.id,
+                message.content,
+            )
+            if amount <= 0:
+                return
+
             bonus_roles = level_cfg.get("bonus_roles") or {}
             member_role_ids = {r.id for r in message.author.roles}
             multipliers = [
@@ -396,7 +402,7 @@ class Bot(commands.AutoShardedBot):
                 if int(role_id) in member_role_ids
             ]
             if multipliers:
-                amount = random.randint(level_cfg["xp_min"], level_cfg["xp_max"]) * max(multipliers)
+                amount *= max(multipliers)
 
             key = (message.guild.id, message.author.id)
             new_level, leveled_up, _, total_xp = await self.levels.add_xp(*key, amount=amount)
