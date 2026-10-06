@@ -3,7 +3,11 @@ import discord
 log=logging.getLogger('bot.scheduler')
 class Scheduler:
     def __init__(self,bot,interval=5): self.bot=bot; self.interval=interval; self.task=None; self.stop=asyncio.Event()
-    async def start(self): self.task=asyncio.create_task(self.run())
+    async def start(self):
+        if self.task and not self.task.done():
+            return
+        self.stop.clear()
+        self.task=asyncio.create_task(self.run(), name='fallen-scheduler')
     async def run(self):
         while not self.stop.is_set():
             try:
@@ -55,4 +59,7 @@ class Scheduler:
             await asyncio.sleep(self.interval)
     async def close(self):
         self.stop.set()
-        if self.task: self.task.cancel()
+        if self.task:
+            self.task.cancel()
+            await asyncio.gather(self.task, return_exceptions=True)
+            self.task=None
