@@ -58,6 +58,8 @@ class GatewayWorkerPool:
         # Serialize by actual guild ID. Hash buckets make unrelated guilds
         # contend and can create latency spikes at scale.
         self._guild_locks: dict[int, asyncio.Semaphore] = {}
+        self._guild_lock_refs: dict[int, int] = {}
+        self._guild_lock_guard = asyncio.Lock()
 
     async def start(self):
         self._closing = False
@@ -66,6 +68,28 @@ class GatewayWorkerPool:
 
     def _spawn(self, index: int) -> asyncio.Task:
         return asyncio.create_task(self._run(index), name=f'gateway-worker-{index}')
+
+    async def _acquire_guild_lock(self, guild_id: int):
+        async with self._guild_lock_guard:
+            lock = self._guild_locks.get(guild_id)
+            if lock is None:
+                lock = asyncio.Semaphore(self.guild_concurrency)
+                self._guild_locks[guild_id] = lock
+                self._guild_lock_refs[guild_id] = 0
+            self._guild_lock_refs[guild_id] += 1
+            return lock
+
+    async def _release_guild_lock(self, guild_id: int, lock):
+        async with self._guild_lock_guard:
+            refs = self._guild_lock_refs.get(guild_id, 1) - 1
+            if refs <= 0:
+                self._guild_lock_refs.pop(guild_id, None)
+                if not lock.locked():
+                    self._guild_locks.pop(guild_id, None)
+                else:
+                    self._guild_locks[guild_id] = lock
+            else:
+                self._guild_lock_refs[guild_id] = refs
 
     @staticmethod
     def _guild_id(event) -> int | None:
@@ -111,19 +135,25 @@ class GatewayWorkerPool:
                             log.warning('rejecting gateway event with stale/missing fence guild=%s shard=%s', guild_id, shard_id)
                             continue
                         fence_token = push_fence(ctx)
-                        lock = self._guild_locks.setdefault(guild_id, asyncio.Semaphore(self.guild_concurrency))
-                        async with lock:
-                            if not await lease_mgr.validate_fence(shard_id, ctx.fence):
-                                continue
-                            await self._dispatch(event)
-                            if not await lease_mgr.validate_fence(shard_id, ctx.fence):
-                                raise RuntimeError(f'shard fence lost during event shard={shard_id}')
+                        lock = await self._acquire_guild_lock(guild_id)
+                        try:
+                            async with lock:
+                                if not await lease_mgr.validate_fence(shard_id, ctx.fence):
+                                    continue
+                                await self._dispatch(event)
+                                if not await lease_mgr.validate_fence(shard_id, ctx.fence):
+                                    raise RuntimeError(f'shard fence lost during event shard={shard_id}')
+                        finally:
+                            await self._release_guild_lock(guild_id, lock)
                     else:
                         if not getattr(lease_mgr, 'healthy', False):
                             continue
-                        lock = self._guild_locks.setdefault(guild_id, asyncio.Semaphore(self.guild_concurrency))
-                        async with lock:
-                            await self._dispatch(event)
+                        lock = await self._acquire_guild_lock(guild_id)
+                        try:
+                            async with lock:
+                                await self._dispatch(event)
+                        finally:
+                            await self._release_guild_lock(guild_id, lock)
                 else:
                     await self._dispatch(event)
             except asyncio.CancelledError:
