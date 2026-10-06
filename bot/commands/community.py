@@ -89,13 +89,66 @@ class Community(commands.Cog):
             cfg = await self.bot.levels.settings(i.guild_id)
         embed = info_embed('Level Settings', 'Current leveling configuration.')
         embed.add_field(name='Enabled', value=str(cfg['enabled']), inline=True)
-        embed.add_field(name='XP', value=f"{cfg['xp_min']}–{cfg['xp_max']} per eligible message", inline=True)
+        mode = 'Letters' if cfg['message_xp_mode'] == 'per_character' else 'Random'
+        xp_value = f"{cfg['xp_per_character']} XP/letter, max {cfg['max_character_xp']} XP" if cfg['message_xp_mode'] == 'per_character' else f"{cfg['xp_min']}–{cfg['xp_max']} XP/message"
+        embed.add_field(name='Message XP', value=f"**{mode}** • {xp_value}", inline=True)
+        embed.add_field(name='XP Channels', value=str(len(cfg['xp_channels'])) + (' configured' if cfg['xp_channels'] else ' • all allowed'), inline=True)
         embed.add_field(name='Cooldown', value=f"{cfg['cooldown_seconds']}s", inline=True)
         embed.add_field(name='Announcements', value=str(cfg['announce']), inline=True)
         embed.add_field(name='Stack rewards', value=str(cfg['stack_awards']), inline=True)
         target = cfg['announcement_channel_id']
         embed.add_field(name='Level-up Channel', value=f'<#{target}>' if target else 'Message channel', inline=True)
         await i.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name='level-channel', description='Allow leveling XP in a specific channel')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    async def level_channel(self, i, channel: discord.TextChannel):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        channels = set(cfg['xp_channels'])
+        channels.add(channel.id)
+        await self.bot.levels.update_settings(i.guild_id, xp_channels=list(channels))
+        await i.response.send_message(embed=success_embed('Leveling channel added', f'{channel.mention} is now an XP channel. If any XP channels are configured, XP is earned only there.'), ephemeral=True)
+
+    @app_commands.command(name='level-channel-remove', description='Remove a channel from the leveling XP whitelist')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    async def level_channel_remove(self, i, channel: discord.TextChannel):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        channels = [x for x in cfg['xp_channels'] if x != channel.id]
+        await self.bot.levels.update_settings(i.guild_id, xp_channels=channels)
+        await i.response.send_message(embed=success_embed('Leveling channel removed', f'{channel.mention} is no longer a dedicated XP channel.'), ephemeral=True)
+
+    @app_commands.command(name='level-channels', description='Show the dedicated leveling XP channels')
+    @app_commands.guild_only()
+    async def level_channels(self, i):
+        cfg = await self.bot.levels.settings(i.guild_id)
+        value = ', '.join(f'<#{x}>' for x in cfg['xp_channels']) if cfg['xp_channels'] else 'All channels except excluded channels.'
+        await i.response.send_message(embed=info_embed('Leveling XP Channels', value), ephemeral=True)
+
+    @app_commands.command(name='xp-add', description='Add XP to a member')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(member='Member receiving XP', amount='Amount of XP to add')
+    async def xp_add(self, i, member: discord.Member, amount: app_commands.Range[int, 1, 1000000]):
+        old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount)
+        await i.response.send_message(embed=success_embed('XP added', f'{member.mention} received **{amount:,} XP**.\nLevel: **{new_level}** • Total XP: **{total:,}**'), ephemeral=True)
+
+    @app_commands.command(name='xp-remove', description='Remove XP from a member')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(member='Member losing XP', amount='Amount of XP to remove')
+    async def xp_remove(self, i, member: discord.Member, amount: app_commands.Range[int, 1, 1000000]):
+        old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, -amount)
+        await i.response.send_message(embed=success_embed('XP removed', f'{member.mention} lost **{amount:,} XP**.\nLevel: **{new_level}** • Total XP: **{total:,}**'), ephemeral=True)
+
+    @app_commands.command(name='xp-set', description='Set a member total XP value')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(member='Member to update', amount='New total XP value')
+    async def xp_set(self, i, member: discord.Member, amount: app_commands.Range[int, 0, 10000000]):
+        old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount, set_value=True)
+        await i.response.send_message(embed=success_embed('XP set', f'{member.mention} now has **{total:,} total XP**.\nLevel: **{new_level}**'), ephemeral=True)
 
     @app_commands.command(name='level-bonus', description='Give a role a leveling XP multiplier')
     @app_commands.guild_only()
