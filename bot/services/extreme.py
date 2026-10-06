@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import re
 from sqlalchemy import delete, select, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import GuildConfig, FeatureRecord, SecurityEvent, ScheduledAction, AutoModRule, MemberProfile, Reputation, Playlist, Ticket, ConfigSnapshot
 
 FEATURES = {
@@ -139,10 +140,20 @@ class ExtremeService:
             for k,v in changes.items(): setattr(row,k,v)
             await s.commit(); return row
     async def reputation_change(self,guild_id,user_id,delta):
+        delta=int(delta)
         async with self.db.session() as s:
-            row=(await s.execute(select(Reputation).where(Reputation.guild_id==guild_id,Reputation.user_id==user_id))).scalar_one_or_none()
-            if not row: row=Reputation(guild_id=guild_id,user_id=user_id); s.add(row)
-            row.score=max(-100000,row.score+int(delta)); await s.commit(); return row.score
+            stmt=pg_insert(Reputation).values(
+                guild_id=guild_id,
+                user_id=user_id,
+                score=max(-100000, delta),
+            ).on_conflict_do_update(
+                index_elements=['guild_id', 'user_id'],
+                set_={'score': func.greatest(Reputation.score + delta, -100000)},
+            ).returning(Reputation.score)
+            result=await s.execute(stmt)
+            score=result.scalar_one()
+            await s.commit()
+            return score
     async def reputation(self,guild_id,user_id):
         async with self.db.session() as s: return (await s.execute(select(Reputation).where(Reputation.guild_id==guild_id,Reputation.user_id==user_id))).scalar_one_or_none()
     async def playlist(self,guild_id,owner_id,name,server_wide=False):
