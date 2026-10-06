@@ -7,6 +7,7 @@ from bot.ui import success_embed, error_embed
 class Tickets(commands.Cog):
     def __init__(self,bot): self.bot=bot
     @app_commands.command(name='ticket',description='Create a private support ticket')
+    @app_commands.guild_only()
     async def ticket(self,i):
         await i.response.defer(ephemeral=True)
         ch=await self.bot.tickets.create(i.guild,None,i.user)
@@ -14,6 +15,7 @@ class Tickets(commands.Cog):
         await ch.send(f'🎫 Welcome {i.user.mention}. Staff can help you here.')
         await i.followup.send(embed=success_embed('Ticket created', f'Your private support channel is {ch.mention}.'),ephemeral=True)
     @app_commands.command(name='close',description='Close the current ticket')
+    @app_commands.guild_only()
     async def close(self,i):
         row=await self.bot.extreme.ticket_get(i.channel.id)
         owner_id = None
