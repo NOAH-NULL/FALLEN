@@ -188,6 +188,28 @@ class Bot(commands.AutoShardedBot):
         except discord.HTTPException:
             return False
 
+    async def restore_quarantined_member(self, guild, member_id: int):
+        snapshot = await self.extreme.snapshot_get(guild.id, f"__quarantine__:{member_id}")
+        if not snapshot:
+            return 0
+        member = guild.get_member(member_id)
+        if member is None:
+            return 0
+        restored = 0
+        try:
+            roles = [
+                guild.get_role(int(role_id))
+                for role_id in snapshot.payload.get("role_ids", [])
+            ]
+            roles = [r for r in roles if r and r < guild.me.top_role]
+            if roles:
+                await member.add_roles(*roles, reason="Fallen anti-nuke quarantine recovery")
+                restored = len(roles)
+            await self.extreme.snapshot_delete(guild.id, f"__quarantine__:{member_id}")
+        except discord.HTTPException:
+            return restored
+        return restored
+
     async def restore_deleted_resource(self, guild, resource, action):
         """Best-effort recreation of a freshly deleted channel/role."""
         try:
