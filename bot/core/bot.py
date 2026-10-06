@@ -140,6 +140,14 @@ class Bot(commands.AutoShardedBot):
             channel = guild.get_channel(int(channel_id))
             if channel is None:
                 continue
+            try:
+                await channel.edit(
+                    name=data.get("name", channel.name),
+                    position=data.get("position", channel.position),
+                    reason="Fallen anti-nuke restoration",
+                )
+            except discord.HTTPException:
+                pass
             for target_id, overwrite_data in (data.get("overwrites") or {}).items():
                 target = guild.get_role(int(target_id)) or guild.get_member(int(target_id))
                 if target is None:
