@@ -226,6 +226,8 @@ class GreetingWorker:
                 return False
 
         public_enabled = kind == "goodbye" or bool(settings.get("public_enabled", True))
+        if force_channel is not None:
+            public_enabled = True
         dm_enabled = kind == "welcome" and bool(settings.get("dm_enabled"))
 
         channel = force_channel
