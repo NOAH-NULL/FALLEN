@@ -152,41 +152,95 @@ class Greeting(commands.Cog):
         await self._save(i.guild_id, **values)
         await i.response.send_message(f'{kind.title()} embed updated. The banner/GIF and embed will be sent together.')
 
+    async def _run_test(self, guild, channel, member, kind):
+        if kind not in ('welcome', 'goodbye'):
+            return False, 'kind must be welcome or goodbye'
+
+        cfg = await self.bot.guild_config.get(guild.id)
+        require_embed = bool(cfg.get(f'{kind}_embed_enabled', True))
+
+        me = guild.me
+        if me is None and self.bot.user is not None:
+            me = guild.get_member(self.bot.user.id)
+
+        ok, missing = self._can_send(channel, me, require_embed=require_embed)
+        if not ok:
+            return False, f'I am missing: **{missing}** in {channel.mention}.'
+
+        try:
+            await self.bot.greeting_worker.deliver(
+                member,
+                kind,
+                force_channel=channel,
+            )
+        except ValueError as exc:
+            self.bot.log.warning(
+                'greeting test rejected guild=%s kind=%s user=%s: %s',
+                guild.id, kind, member.id, exc,
+            )
+            return False, f'Greeting test failed: `{exc}`.'
+        except discord.Forbidden:
+            self.bot.log.warning(
+                'greeting test forbidden guild=%s kind=%s user=%s',
+                guild.id, kind, member.id,
+            )
+            return False, 'Greeting test failed: Discord denied the send. Check View Channel, Send Messages, Attach Files, and Embed Links permissions.'
+        except discord.HTTPException as exc:
+            self.bot.log.warning(
+                'greeting test HTTP failure guild=%s kind=%s user=%s status=%s',
+                guild.id, kind, member.id, getattr(exc, 'status', '?'),
+            )
+            return False, 'Greeting test failed: Discord HTTP error `' + str(getattr(exc, 'status', 'unknown')) + '`.'
+        except Exception:
+            self.bot.log.exception(
+                'greeting test crashed guild=%s kind=%s user=%s',
+                guild.id, kind, member.id,
+            )
+            return False, 'Greeting test failed unexpectedly. The full error is in the bot logs.'
+
+        return True, f'✅ {kind.title()} test sent successfully.'
+
     @group.command(name='test')
     @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def test(self, i, kind: str = 'welcome'):
-        if kind not in ('welcome', 'goodbye'):
-            return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
-        cfg = await self.bot.guild_config.get(i.guild_id)
-        require_embed = bool(cfg.get(f'{kind}_embed_enabled', True))
-        ok, missing = self._can_send(i.channel, i.guild.me, require_embed=require_embed)
-        if not ok:
-            return await i.response.send_message(
-                f'❌ I am missing: **{missing}** in {i.channel.mention}.',
-                ephemeral=True,
-            )
         await i.response.defer(ephemeral=True)
-        try:
-            await self.bot.greeting_worker.deliver(i.user, kind, force_channel=i.channel)
-        except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
-            self.bot.log.warning(
-                'greeting test failed guild=%s kind=%s user=%s: %s',
-                i.guild_id, kind, i.user.id, exc,
-            )
-            return await i.followup.send(
-                f'❌ Greeting test failed: `{type(exc).__name__}`.',
-                ephemeral=True,
-            )
-        except Exception:
-            self.bot.log.exception('greeting test crashed guild=%s kind=%s', i.guild_id, kind)
-            return await i.followup.send(
-                '❌ Greeting test failed unexpectedly. Check the bot logs.',
-                ephemeral=True,
-            )
-        await i.followup.send(f'✅ {kind.title()} test sent successfully.', ephemeral=True)
+        ok, message = await self._run_test(
+            i.guild,
+            i.channel,
+            i.user,
+            kind.lower(),
+        )
+        await i.followup.send(
+            message if ok else f'❌ {message}',
+            ephemeral=True,
+        )
 
+    @commands.group(
+        name='greeting',
+        aliases=['greet'],
+        invoke_without_command=True,
+    )
+    @commands.guild_only()
+    async def greeting_prefix(self, ctx):
+        await ctx.send(
+            f'Use `{ctx.prefix}greeting test welcome` or `{ctx.prefix}greeting test goodbye`.'
+        )
+
+    @greeting_prefix.command(name='test')
+    @commands.has_guild_permissions(manage_guild=True)
+    async def greeting_prefix_test(self, ctx, kind: str = 'welcome'):
+        ok, message = await self._run_test(
+            ctx.guild,
+            ctx.channel,
+            ctx.author,
+            kind.lower(),
+        )
+        if ok:
+            await ctx.send(message)
+        else:
+            await ctx.send(f'❌ {message}')
 
 async def setup(bot):
     await bot.add_cog(Greeting(bot))
