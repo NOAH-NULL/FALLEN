@@ -94,10 +94,7 @@ class Levels(commands.GroupCog, name='level'):
             ephemeral=True,
         )
 
-    @app_commands.command(name='config', description='Show current leveling channel configuration')
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def config(self, interaction: discord.Interaction):
+    async def _send_config(self, interaction: discord.Interaction):
         cfg = await self.bot.levels.settings(interaction.guild.id)
         announce_channel = (
             interaction.guild.get_channel(cfg['announcement_channel_id'])
@@ -118,6 +115,18 @@ class Levels(commands.GroupCog, name='level'):
             f'Announcements enabled: **{cfg["announce"]}**',
             ephemeral=True,
         )
+
+    @app_commands.command(name='settings', description='Show current leveling settings')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def settings_cmd(self, interaction: discord.Interaction):
+        await self._send_config(interaction)
+
+    @app_commands.command(name='config', description='Show current leveling channel configuration')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def config(self, interaction: discord.Interaction):
+        await self._send_config(interaction)
 
 
 async def setup(bot):
