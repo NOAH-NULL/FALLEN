@@ -188,6 +188,7 @@ class Greeting(commands.Cog):
         if message is not None:
             values['welcome_dm_message'] = message[:1900]
         await self._save(i.guild_id, **values)
+        await self.bot.welcome_engine.save(i.guild_id, dm_enabled=enabled)
         state = 'enabled' if enabled else 'disabled'
         await i.response.send_message(
             f'✅ Welcome DMs are now **{state}**.' + (' The DM template was updated.' if message is not None else ''),
@@ -210,6 +211,16 @@ class Greeting(commands.Cog):
         if label is not None:
             values['welcome_button_label'] = label.strip()[:80]
         await self._save(i.guild_id, **values)
+        settings = await self.bot.welcome_engine.get(i.guild_id)
+        buttons = list(settings.get('buttons') or [])
+        while len(buttons) < 5:
+            buttons.append({'enabled': False, 'label': 'Open', 'url': 'https://discord.com/'})
+        buttons[0] = {
+            'enabled': enabled,
+            'label': (label or settings.get('welcome_button_label') or 'Read the Rules').strip()[:80],
+            'url': (url or settings.get('welcome_button_url') or 'https://discord.com/').strip()[:2000],
+        }
+        await self.bot.welcome_engine.save(i.guild_id, buttons=buttons)
         state = 'enabled' if enabled else 'disabled'
         await i.response.send_message(f'✅ Welcome button **{state}**.', ephemeral=True)
 
@@ -219,6 +230,7 @@ class Greeting(commands.Cog):
     @app_commands.describe(enabled='Show member/account/inviter details in the welcome embed')
     async def details(self, i, enabled: bool):
         await self._save(i.guild_id, welcome_show_details=enabled)
+        await self.bot.welcome_engine.save(i.guild_id, show_details=enabled)
         state = 'enabled' if enabled else 'disabled'
         await i.response.send_message(f'✅ Welcome detail fields **{state}**.', ephemeral=True)
     @group.command(name='banner-reset')
