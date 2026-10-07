@@ -143,7 +143,7 @@ class TextCommands(commands.Cog):
     @commands.group(name='greeting', aliases=['greet'], invoke_without_command=True)
     @commands.guild_only()
     async def greeting_group(self,ctx):
-        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|test`.')
+        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|test`.')
     @greeting_group.command(name='channel')
     @commands.has_permissions(manage_guild=True)
     async def greeting_channel(self,ctx,kind:str,channel:discord.TextChannel):
@@ -185,6 +185,60 @@ class TextCommands(commands.Cog):
         if description is not None: await self._set_cfg(ctx,f'{kind}_embed_description',description[:4096], '✅ Embed description saved.')
         await ctx.send('The embed will be sent alongside the banner/GIF.')
 
+    @greeting_group.command(name='status')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_status(self,ctx):
+        cfg=await self.bot.guild_config.get(ctx.guild.id)
+        welcome=ctx.guild.get_channel(cfg.get('welcome_channel_id')) if cfg.get('welcome_channel_id') else None
+        goodbye=ctx.guild.get_channel(cfg.get('goodbye_channel_id')) if cfg.get('goodbye_channel_id') else None
+        await ctx.send(
+            '**Greeting status**\n'
+            f'Welcome: {welcome.mention if welcome else "not configured"}\n'
+            f'Goodbye: {goodbye.mention if goodbye else "not configured"}\n'
+            f'Welcome DM: {"enabled" if cfg.get("welcome_dm_enabled") else "disabled"}\n'
+            f'Button: {"enabled" if cfg.get("welcome_button_enabled") else "disabled"}\n'
+            f'Details: {"enabled" if cfg.get("welcome_show_details",True) else "disabled"}'
+        )
+
+    @greeting_group.command(name='placeholders')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_placeholders(self,ctx):
+        await ctx.send(
+            '**Greeting placeholders**\n'
+            '`{mention}` `{name}` `{username}` `{server}` `{count}` `{membercount}`\n'
+            '`{inviter}` `{inviter_name}` `{invites}` `{account_age}`\n'
+            '`{account_created}` `{joined_at}` `{boosts}` `{server_id}` `{user_id}`'
+        )
+
+    @greeting_group.command(name='dm')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_dm(self,ctx,enabled:bool,*,message:str=None):
+        if message is not None:
+            from bot.commands.greeting import Greeting
+            error=Greeting._validate_template(message)
+            if error: return await ctx.send(f'❌ {error}')
+        values={'welcome_dm_enabled':enabled}
+        if message is not None: values['welcome_dm_message']=message[:1900]
+        await self.bot.guild_config.update(ctx.guild.id,**values)
+        await ctx.send(f'✅ Welcome DMs are now **{"enabled" if enabled else "disabled"}**.')
+
+    @greeting_group.command(name='button')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_button(self,ctx,enabled:bool,url:str=None,*,label:str='Read the Rules'):
+        if enabled and (not url or not url.strip().startswith('https://')):
+            return await ctx.send('❌ The button requires a valid **https://** URL.')
+        if label and len(label)>80: label=label[:80]
+        values={'welcome_button_enabled':enabled}
+        if url is not None: values['welcome_button_url']=url.strip()[:2000]
+        if label: values['welcome_button_label']=label.strip()
+        await self.bot.guild_config.update(ctx.guild.id,**values)
+        await ctx.send(f'✅ Welcome button **{"enabled" if enabled else "disabled"}**.')
+
+    @greeting_group.command(name='details')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_details(self,ctx,enabled:bool):
+        await self.bot.guild_config.update(ctx.guild.id,welcome_show_details=enabled)
+        await ctx.send(f'✅ Welcome detail fields **{"enabled" if enabled else "disabled"}**.')
     @greeting_group.command(name='test')
     @commands.has_permissions(manage_guild=True)
     async def greeting_test(self,ctx,kind:str='welcome'):
