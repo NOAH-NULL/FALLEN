@@ -5,9 +5,17 @@ def test_xp_threshold_scales():
     assert LevelService.xp_needed(0) == 100
     assert LevelService.xp_needed(4) == 500
 
-def test_community_source_has_level_uwu_and_level_roles():
-    source = Path('bot/commands/community.py').read_text()
+def test_level_commands_are_registered_in_the_level_group():
+    source = Path('bot/commands/levels.py').read_text()
     assert "name='level'" in source
+    assert "name='show'" in source
+    assert "name='settings'" in source
+    assert "name='channel'" in source
+    assert "name='xp-channel'" in source
+
+
+def test_community_source_keeps_uwu_and_level_roles():
+    source = Path('bot/commands/community.py').read_text()
     assert "name='uwuify'" in source
     assert "name='levelrole'" in source
     assert "name='levelrole-remove'" in source
