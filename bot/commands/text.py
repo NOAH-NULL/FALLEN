@@ -225,6 +225,7 @@ class TextCommands(commands.Cog):
         values={'welcome_dm_enabled':enabled}
         if message is not None: values['welcome_dm_message']=message[:1900]
         await self.bot.guild_config.update(ctx.guild.id,**values)
+        await self.bot.welcome_engine.save(ctx.guild.id,dm_enabled=enabled)
         await ctx.send(f'✅ Welcome DMs are now **{"enabled" if enabled else "disabled"}**.')
 
     @greeting_group.command(name='button')
@@ -237,12 +238,19 @@ class TextCommands(commands.Cog):
         if url is not None: values['welcome_button_url']=url.strip()[:2000]
         if label: values['welcome_button_label']=label.strip()
         await self.bot.guild_config.update(ctx.guild.id,**values)
+        settings=await self.bot.welcome_engine.get(ctx.guild.id)
+        buttons=list(settings.get('buttons') or [])
+        while len(buttons)<5:
+            buttons.append({'enabled':False,'label':'Open','url':'https://discord.com/'})
+        buttons[0]={'enabled':enabled,'label':(label or settings.get('welcome_button_label') or 'Read the Rules').strip()[:80],'url':(url or settings.get('welcome_button_url') or 'https://discord.com/').strip()[:2000]}
+        await self.bot.welcome_engine.save(ctx.guild.id,buttons=buttons)
         await ctx.send(f'✅ Welcome button **{"enabled" if enabled else "disabled"}**.')
 
     @greeting_group.command(name='details')
     @commands.has_permissions(manage_guild=True)
     async def greeting_details(self,ctx,enabled:bool):
         await self.bot.guild_config.update(ctx.guild.id,welcome_show_details=enabled)
+        await self.bot.welcome_engine.save(ctx.guild.id,show_details=enabled)
         await ctx.send(f'✅ Welcome detail fields **{"enabled" if enabled else "disabled"}**.')
 
     @greeting_group.command(name='preset')
