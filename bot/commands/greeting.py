@@ -80,8 +80,25 @@ class Greeting(commands.Cog):
     async def channel(self, i, kind: str, channel: discord.TextChannel):
         if kind not in ('welcome', 'goodbye'):
             return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
+        me = i.guild.me
+        if me is None:
+            return await i.response.send_message('❌ I cannot resolve my server member.', ephemeral=True)
+        permissions = channel.permissions_for(me)
+        missing = [
+            name for name, ok in (
+                ('View Channel', permissions.view_channel),
+                ('Send Messages', permissions.send_messages),
+                ('Attach Files', permissions.attach_files),
+                ('Embed Links', permissions.embed_links if True else True),
+            ) if not ok
+        ]
+        if missing:
+            return await i.response.send_message(
+                f'❌ I cannot use {channel.mention}. Missing: **{", ".join(missing)}**.',
+                ephemeral=True,
+            )
         await self._save(i.guild_id, **{f'{kind}_channel_id': channel.id})
-        await i.response.send_message(f'{kind.title()} channel set to {channel.mention}.')
+        await i.response.send_message(f'✅ {kind.title()} channel set to {channel.mention}.')
 
     @group.command(name='message')
     @app_commands.guild_only()
