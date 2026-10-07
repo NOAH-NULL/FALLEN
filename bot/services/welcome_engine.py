@@ -57,7 +57,7 @@ class WelcomeEngine:
 
         # Preserve the older controls while making the advanced settings the
         # single source of truth for new behavior.
-        if raw is None:
+        if not raw:
             out["dm_enabled"] = bool(legacy.get("welcome_dm_enabled", False))
             out["show_details"] = bool(legacy.get("welcome_show_details", True))
             if legacy.get("welcome_button_enabled") and legacy.get("welcome_button_url"):
