@@ -428,6 +428,37 @@ class Greeting(commands.Cog):
         await self.bot.welcome_engine.save(i.guild_id, buttons=buttons)
         await i.response.send_message(f'✅ Welcome button slot {slot} {"enabled" if enabled else "disabled"}.', ephemeral=True)
 
+    @group.command(name='bots')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def bots(self, i, enabled: bool):
+        await self.bot.welcome_engine.save(i.guild_id, include_bots=enabled)
+        await i.response.send_message(
+            f'✅ Welcome messages for bot accounts are now **{"enabled" if enabled else "disabled"}**.',
+            ephemeral=True,
+        )
+
+    @group.command(name='reliability')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def reliability(
+        self,
+        i,
+        retry_attempts: app_commands.Range[int, 0, 4],
+        dm_retry: app_commands.Range[int, 0, 2],
+        dedupe_seconds: app_commands.Range[int, 0, 600],
+    ):
+        await self.bot.welcome_engine.save(
+            i.guild_id,
+            retry_attempts=int(retry_attempts),
+            dm_retry=int(dm_retry),
+            dedupe_seconds=int(dedupe_seconds),
+        )
+        await i.response.send_message(
+            f'✅ Reliability tuned: public retries={retry_attempts}, DM retries={dm_retry}, duplicate window={dedupe_seconds}s.',
+            ephemeral=True,
+        )
+
     @group.command(name='advanced')
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
