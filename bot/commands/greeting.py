@@ -83,13 +83,14 @@ class Greeting(commands.Cog):
         me = i.guild.me
         if me is None:
             return await i.response.send_message('❌ I cannot resolve my server member.', ephemeral=True)
+        cfg = await self.bot.guild_config.get(i.guild_id)
         permissions = channel.permissions_for(me)
         missing = [
             name for name, ok in (
                 ('View Channel', permissions.view_channel),
                 ('Send Messages', permissions.send_messages),
                 ('Attach Files', permissions.attach_files),
-                ('Embed Links', permissions.embed_links if True else True),
+                ('Embed Links', permissions.embed_links if cfg.get(f'{kind}_embed_enabled', True) else True),
             ) if not ok
         ]
         if missing:
