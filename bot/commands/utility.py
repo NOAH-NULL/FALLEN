@@ -17,6 +17,7 @@ class Utility(commands.Cog):
         await i.response.send_message(embed=embed)
 
     @app_commands.command(name='health', description='Show database, Redis and bot health')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def health(self, i: discord.Interaction):
         try:
