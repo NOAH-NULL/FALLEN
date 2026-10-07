@@ -7,6 +7,7 @@ class Invites(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
     @app_commands.command(name='invites', description='Show invite stats for a member')
+    @app_commands.guild_only()
     async def invites(self, i, member: discord.Member | None = None):
         m = member or i.user
         rows = await self.bot.invites.stats(i.guild_id, m.id)
@@ -14,6 +15,7 @@ class Invites(commands.Cog):
         embed=info_embed('Invite Stats', f'{m.mention} has **{joins:,}** tracked invite joins.', thumbnail=m.display_avatar.url); embed.set_footer(text='Fallen • Invite tracking'); await i.response.send_message(embed=embed)
 
     @app_commands.command(name='inviteleaderboard', description='Show the server invite leaderboard')
+    @app_commands.guild_only()
     async def inviteleaderboard(self, i):
         rows = await self.bot.invites.stats(i.guild_id)
         if not rows: return await i.response.send_message('No invite joins have been tracked yet.')
