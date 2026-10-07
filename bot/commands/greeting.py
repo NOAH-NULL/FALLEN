@@ -25,7 +25,9 @@ class Greeting(commands.Cog):
             return 'Message cannot be empty.'
         allowed = {
             'mention', 'name', 'username', 'server', 'count',
-            'membercount', 'inviter', 'invites',
+            'membercount', 'inviter', 'inviter_name', 'invites',
+            'account_age', 'account_created', 'joined_at',
+            'boosts', 'server_id', 'user_id',
         }
         try:
             for _, field_name, _, _ in string.Formatter().parse(value):
@@ -42,7 +44,14 @@ class Greeting(commands.Cog):
                 count=1,
                 membercount=1,
                 inviter='Unknown',
+                inviter_name='Unknown',
                 invites=0,
+                account_age='1d',
+                account_created='2026-01-01',
+                joined_at='2026-01-01',
+                boosts=0,
+                server_id=0,
+                user_id=0,
             )
         except (KeyError, ValueError, IndexError):
             return 'Invalid message template.'
@@ -112,6 +121,84 @@ class Greeting(commands.Cog):
             return await i.response.send_message('Upload an image/GIF or provide an image URL.', ephemeral=True)
         await i.response.send_message(f'Custom {kind} banner saved. GIFs remain animated.')
 
+    @group.command(name='status')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def status(self, i):
+        cfg = await self.bot.guild_config.get(i.guild_id)
+        welcome_channel = i.guild.get_channel(cfg.get('welcome_channel_id')) if cfg.get('welcome_channel_id') else None
+        goodbye_channel = i.guild.get_channel(cfg.get('goodbye_channel_id')) if cfg.get('goodbye_channel_id') else None
+        lines = [
+            f"**Welcome:** {welcome_channel.mention if welcome_channel else 'Not configured'}",
+            f"**Goodbye:** {goodbye_channel.mention if goodbye_channel else 'Not configured'}",
+            f"**Welcome DM:** {'Enabled' if cfg.get('welcome_dm_enabled') else 'Disabled'}",
+            f"**Rules button:** {'Enabled' if cfg.get('welcome_button_enabled') else 'Disabled'}",
+            f"**Details:** {'Enabled' if cfg.get('welcome_show_details', True) else 'Disabled'}",
+            f"**Welcome embed:** {'Enabled' if cfg.get('welcome_embed_enabled', True) else 'Disabled'}",
+            f"**Goodbye embed:** {'Enabled' if cfg.get('goodbye_embed_enabled', True) else 'Disabled'}",
+        ]
+        if cfg.get('welcome_button_enabled'):
+            lines.append(f"**Button:** `{(cfg.get('welcome_button_label') or 'Read the Rules')[:80]}` → {cfg.get('welcome_button_url') or 'Invalid/unset URL'}")
+        await i.response.send_message('\n'.join(lines), ephemeral=True)
+
+    @group.command(name='placeholders')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def placeholders(self, i):
+        await i.response.send_message(
+            '**Greeting placeholders**\n'
+            '`{mention}` `{name}` `{username}` `{server}` `{count}` `{membercount}`\n'
+            '`{inviter}` `{inviter_name}` `{invites}` `{account_age}`\n'
+            '`{account_created}` `{joined_at}` `{boosts}` `{server_id}` `{user_id}`',
+            ephemeral=True,
+        )
+
+    @group.command(name='dm')
+    @app_commands.guild_only()
+    @app_commands.choices(kind=[app_commands.Choice(name='Welcome', value='welcome')])
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(enabled='Send a private welcome DM when someone joins', message='DM template using greeting placeholders')
+    async def dm(self, i, kind: str, enabled: bool, message: str = None):
+        error = self._validate_template(message) if message is not None else None
+        if error:
+            return await i.response.send_message(f'❌ {error}', ephemeral=True)
+        values = {'welcome_dm_enabled': enabled}
+        if message is not None:
+            values['welcome_dm_message'] = message[:1900]
+        await self._save(i.guild_id, **values)
+        state = 'enabled' if enabled else 'disabled'
+        await i.response.send_message(
+            f'✅ Welcome DMs are now **{state}**.' + (' The DM template was updated.' if message is not None else ''),
+            ephemeral=True,
+        )
+
+    @group.command(name='button')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(enabled='Show a link button on the welcome message', url='HTTPS URL for rules, website, verification, etc.', label='Button label')
+    async def button(self, i, enabled: bool, url: str = None, label: str = None):
+        if enabled:
+            if not url or not url.strip().startswith('https://'):
+                return await i.response.send_message('❌ The button requires a valid **https://** URL.', ephemeral=True)
+            if label is not None and not label.strip():
+                return await i.response.send_message('❌ Button label cannot be empty.', ephemeral=True)
+        values = {'welcome_button_enabled': enabled}
+        if url is not None:
+            values['welcome_button_url'] = url.strip()[:2000]
+        if label is not None:
+            values['welcome_button_label'] = label.strip()[:80]
+        await self._save(i.guild_id, **values)
+        state = 'enabled' if enabled else 'disabled'
+        await i.response.send_message(f'✅ Welcome button **{state}**.', ephemeral=True)
+
+    @group.command(name='details')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(enabled='Show member/account/inviter details in the welcome embed')
+    async def details(self, i, enabled: bool):
+        await self._save(i.guild_id, welcome_show_details=enabled)
+        state = 'enabled' if enabled else 'disabled'
+        await i.response.send_message(f'✅ Welcome detail fields **{state}**.', ephemeral=True)
     @group.command(name='banner-reset')
     @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
