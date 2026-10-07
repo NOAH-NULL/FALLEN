@@ -452,16 +452,51 @@ class Bot(commands.AutoShardedBot):
                         await member.add_roles(role, reason=f"Reached level {new_level}")
 
             if level_cfg["announce"]:
-                target = message.guild.get_channel(level_cfg["announcement_channel_id"]) if level_cfg["announcement_channel_id"] else message.channel
-                if target:
+                configured_channel_id = level_cfg.get("announcement_channel_id")
+                target = (
+                    message.guild.get_channel(configured_channel_id)
+                    if configured_channel_id
+                    else message.channel
+                )
+                if configured_channel_id and target is None:
+                    log.warning(
+                        "level-up announcement channel is missing guild=%s channel=%s user=%s",
+                        message.guild.id,
+                        configured_channel_id,
+                        message.author.id,
+                    )
+                elif target is not None:
                     embed = info_embed(
                         "Level Up!",
                         f"{message.author.mention} reached **Level {new_level}**!\n\nTotal XP: **{total_xp:,}**",
                     )
-                    try:
-                        await target.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
-                    except discord.HTTPException:
-                        log.warning("level-up announcement failed guild=%s user=%s", message.guild.id, message.author.id)
+                    me = message.guild.me
+                    permissions = target.permissions_for(me) if me else None
+                    if permissions and not (
+                        permissions.view_channel
+                        and permissions.send_messages
+                        and permissions.embed_links
+                    ):
+                        log.warning(
+                            "level-up announcement channel lacks permissions guild=%s channel=%s user=%s",
+                            message.guild.id,
+                            target.id,
+                            message.author.id,
+                        )
+                    else:
+                        try:
+                            await target.send(
+                                embed=embed,
+                                allowed_mentions=discord.AllowedMentions(users=True),
+                            )
+                        except discord.HTTPException as exc:
+                            log.warning(
+                                "level-up announcement failed guild=%s channel=%s user=%s status=%s",
+                                message.guild.id,
+                                target.id,
+                                message.author.id,
+                                getattr(exc, "status", "?"),
+                            )
         except Exception:
             log.exception("level update failed")
     async def close(self):
