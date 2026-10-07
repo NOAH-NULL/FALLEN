@@ -143,7 +143,7 @@ class TextCommands(commands.Cog):
     @commands.group(name='greeting', aliases=['greet'], invoke_without_command=True)
     @commands.guild_only()
     async def greeting_group(self,ctx):
-        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|preset|mode|roles|log|security|button-set|advanced|test`.')
+        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|preset|mode|roles|log|security|button-set|bots|reliability|advanced|test`.')
     @greeting_group.command(name='channel')
     @commands.has_permissions(manage_guild=True)
     async def greeting_channel(self,ctx,kind:str,channel:discord.TextChannel):
