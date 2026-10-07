@@ -31,6 +31,7 @@ class GuildConfig(Base):
     welcome_button_label:Mapped[str]=mapped_column(String(80),default='Read the Rules',nullable=False)
     welcome_button_url:Mapped[str|None]=mapped_column(Text,nullable=True)
     welcome_show_details:Mapped[bool]=mapped_column(Boolean,default=True,nullable=False)
+    welcome_settings:Mapped[dict]=mapped_column(JSON,default=dict,nullable=False)
     goodbye_embed_color:Mapped[int]=mapped_column(BigInteger,default=9807270)
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now())
     updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),server_default=func.now(),onupdate=func.now())
