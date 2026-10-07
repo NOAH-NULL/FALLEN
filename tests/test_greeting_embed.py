@@ -28,6 +28,13 @@ def make_animated_gif():
     return output.getvalue()
 
 
+def test_prefix_greeting_alias_is_on_text_surface_only():
+    greeting_source = __import__('pathlib').Path('bot/commands/greeting.py').read_text()
+    text_source = __import__('pathlib').Path('bot/commands/text.py').read_text()
+    assert "name='greet'" not in greeting_source
+    assert "name='greeting', aliases=['greet']" in text_source
+
+
 def test_greeting_embed_defaults_are_enabled_and_have_placeholders():
     from pathlib import Path
     src=Path('bot/services/guild_config.py').read_text()
