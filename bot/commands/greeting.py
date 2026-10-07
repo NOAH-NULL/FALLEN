@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import string
 
 
 KIND_CHOICES = [
@@ -18,7 +19,53 @@ class Greeting(commands.Cog):
     async def _save(self, guild_id, **values):
         await self.bot.guild_config.update(guild_id, **values)
 
+    @staticmethod
+    def _validate_template(value: str):
+        if not value or not value.strip():
+            return 'Message cannot be empty.'
+        allowed = {
+            'mention', 'name', 'username', 'server', 'count',
+            'membercount', 'inviter', 'invites',
+        }
+        try:
+            for _, field_name, _, _ in string.Formatter().parse(value):
+                if field_name and field_name not in allowed:
+                    return f'Unknown template variable: {{{field_name}}}.'
+        except ValueError:
+            return 'Invalid braces in the message template.'
+        try:
+            value.format(
+                mention='@user',
+                name='Member',
+                username='member',
+                server='Server',
+                count=1,
+                membercount=1,
+                inviter='Unknown',
+                invites=0,
+            )
+        except (KeyError, ValueError, IndexError):
+            return 'Invalid message template.'
+        return None
+
+    @staticmethod
+    def _can_send(channel, me):
+        if me is None:
+            return False, 'View Server Member'
+        permissions = channel.permissions_for(me)
+        missing = []
+        if not permissions.view_channel:
+            missing.append('View Channel')
+        if not permissions.send_messages:
+            missing.append('Send Messages')
+        if not permissions.attach_files:
+            missing.append('Attach Files')
+        if not permissions.embed_links:
+            missing.append('Embed Links')
+        return (not missing, ', '.join(missing))
+
     @group.command(name='channel')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def channel(self, i, kind: str, channel: discord.TextChannel):
@@ -28,15 +75,20 @@ class Greeting(commands.Cog):
         await i.response.send_message(f'{kind.title()} channel set to {channel.mention}.')
 
     @group.command(name='message')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def message(self, i, kind: str, text_value: str):
         if kind not in ('welcome', 'goodbye'):
             return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
+        error = self._validate_template(text_value)
+        if error:
+            return await i.response.send_message(f'❌ {error}', ephemeral=True)
         await self._save(i.guild_id, **{f'{kind}_message': text_value[:1000]})
-        await i.response.send_message('Saved.')
+        await i.response.send_message(f'{kind.title()} message saved.')
 
     @group.command(name='banner')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def banner(self, i, kind: str, attachment: discord.Attachment = None, url: str = None):
@@ -61,6 +113,7 @@ class Greeting(commands.Cog):
         await i.response.send_message(f'Custom {kind} banner saved. GIFs remain animated.')
 
     @group.command(name='banner-reset')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def banner_reset(self, i, kind: str):
@@ -73,31 +126,64 @@ class Greeting(commands.Cog):
         await i.response.send_message(f'{kind.title()} banner reset to the default.')
 
     @group.command(name='embed')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(kind='welcome or goodbye', enabled='Show the embed alongside the banner', title='Embed title', description='Embed description', color='Hex color such as #5865F2')
     async def embed(self, i, kind: str, enabled: bool, title: str = None, description: str = None, color: str = None):
         if kind not in ('welcome', 'goodbye'):
             return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
-        await self._save(i.guild_id, **{f'{kind}_embed_enabled': enabled})
-        if title is not None: await self._save(i.guild_id, **{f'{kind}_embed_title': title[:256]})
-        if description is not None: await self._save(i.guild_id, **{f'{kind}_embed_description': description[:4096]})
+        values = {f'{kind}_embed_enabled': enabled}
+        if title is not None:
+            values[f'{kind}_embed_title'] = title[:256]
+        if description is not None:
+            error = self._validate_template(description)
+            if error:
+                return await i.response.send_message(f'❌ {error}', ephemeral=True)
+            values[f'{kind}_embed_description'] = description[:4096]
         if color is not None:
-            try: value=int(color.strip().lstrip('#'),16)
-            except ValueError: return await i.response.send_message('Color must be hex, e.g. #5865F2.', ephemeral=True)
-            if not 0 <= value <= 0xFFFFFF: return await i.response.send_message('Color must be between #000000 and #FFFFFF.', ephemeral=True)
-            await self._save(i.guild_id, **{f'{kind}_embed_color': value})
+            try:
+                value = int(color.strip().lstrip('#'), 16)
+            except ValueError:
+                return await i.response.send_message('Color must be hex, e.g. #5865F2.', ephemeral=True)
+            if not 0 <= value <= 0xFFFFFF:
+                return await i.response.send_message('Color must be between #000000 and #FFFFFF.', ephemeral=True)
+            values[f'{kind}_embed_color'] = value
+        await self._save(i.guild_id, **values)
         await i.response.send_message(f'{kind.title()} embed updated. The banner/GIF and embed will be sent together.')
 
     @group.command(name='test')
+    @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def test(self, i, kind: str = 'welcome'):
         if kind not in ('welcome', 'goodbye'):
             return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
-        await i.response.defer()
-        await self.bot.greeting_worker.submit(i.user, kind, force_channel=i.channel)
-        await i.followup.send('Queued a test card.', ephemeral=True)
+        ok, missing = self._can_send(i.channel, i.guild.me)
+        if not ok:
+            return await i.response.send_message(
+                f'❌ I am missing: **{missing}** in {i.channel.mention}.',
+                ephemeral=True,
+            )
+        await i.response.defer(ephemeral=True)
+        try:
+            await self.bot.greeting_worker.deliver(i.user, kind, force_channel=i.channel)
+        except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
+            self.bot.log.warning(
+                'greeting test failed guild=%s kind=%s user=%s: %s',
+                i.guild_id, kind, i.user.id, exc,
+            )
+            return await i.followup.send(
+                f'❌ Greeting test failed: `{type(exc).__name__}`.',
+                ephemeral=True,
+            )
+        except Exception:
+            self.bot.log.exception('greeting test crashed guild=%s kind=%s', i.guild_id, kind)
+            return await i.followup.send(
+                '❌ Greeting test failed unexpectedly. Check the bot logs.',
+                ephemeral=True,
+            )
+        await i.followup.send(f'✅ {kind.title()} test sent successfully.', ephemeral=True)
 
 
 async def setup(bot):
