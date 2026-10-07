@@ -12,6 +12,7 @@ from bot.cache.redis import RedisCache
 from bot.cache.rate_limit import DistributedRateLimiter
 from bot.cache.invalidation import CacheInvalidationSubscriber
 from bot.services.guild_config import GuildConfigService
+from bot.services.welcome_engine import WelcomeEngine
 from bot.services.greeting import GreetingRenderer
 from bot.services.music import MusicService
 from bot.services.automod import AutoModService
@@ -47,6 +48,7 @@ class Bot(commands.AutoShardedBot):
         self.add_listener(handle_prefix_command_error, 'on_command_error')
         self.db=Database(settings); self.cache=RedisCache(settings.redis_url,settings.redis_max_connections)
         self.limiter=DistributedRateLimiter(self.cache); self.guild_config=GuildConfigService(self.db,self.cache,settings.cache_ttl_seconds,settings.redis_lock_ttl_ms)
+        self.welcome_engine=WelcomeEngine(self)
         self.greetings=GreetingRenderer(); self.music=MusicService(self,settings.music_url,settings.music_password); self.greeting_worker=GreetingWorker(self,settings.greeting_queue_size,settings.greeting_workers,settings.greeting_max_event_age)
         self.invalidation=CacheInvalidationSubscriber(self.cache); self.scheduler=Scheduler(self); self.dashboard=DashboardAPI(self,settings.dashboard_host,settings.dashboard_port)
         self.automod=AutoModService(self.cache, settings.automod_heat_decay, settings.automod_heat_ttl); self.custom_commands=CustomCommandService(self.db,self.cache); self.levels=LevelService(self.db); self.tickets=TicketService(); self.platform=PlatformService(self.db); self.extreme=ExtremeService(self.db); self.v16=V16Runtime(self); self.antiraid=AntiRaid(self.cache); self.reactions=ReactionGifService(); self.uwuify=UwuifyService(self.cache); self.invites=InviteTracker(self.db,self.cache,settings.invite_join_queue_size,settings.invite_stat_flush_interval,bot=self)
