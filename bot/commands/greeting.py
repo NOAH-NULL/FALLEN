@@ -49,7 +49,7 @@ class Greeting(commands.Cog):
         return None
 
     @staticmethod
-    def _can_send(channel, me):
+    def _can_send(channel, me, require_embed=True):
         if me is None:
             return False, 'View Server Member'
         permissions = channel.permissions_for(me)
@@ -60,7 +60,7 @@ class Greeting(commands.Cog):
             missing.append('Send Messages')
         if not permissions.attach_files:
             missing.append('Attach Files')
-        if not permissions.embed_links:
+        if require_embed and not permissions.embed_links:
             missing.append('Embed Links')
         return (not missing, ', '.join(missing))
 
@@ -159,7 +159,9 @@ class Greeting(commands.Cog):
     async def test(self, i, kind: str = 'welcome'):
         if kind not in ('welcome', 'goodbye'):
             return await i.response.send_message('kind must be welcome or goodbye', ephemeral=True)
-        ok, missing = self._can_send(i.channel, i.guild.me)
+        cfg = await self.bot.guild_config.get(i.guild_id)
+        require_embed = bool(cfg.get(f'{kind}_embed_enabled', True))
+        ok, missing = self._can_send(i.channel, i.guild.me, require_embed=require_embed)
         if not ok:
             return await i.response.send_message(
                 f'❌ I am missing: **{missing}** in {i.channel.mention}.',
