@@ -26,7 +26,7 @@ def test_advanced_greeting_migration_exists():
 
 def test_advanced_greeting_commands_exist():
     source = Path('bot/commands/greeting.py').read_text()
-    for name in ('status', 'placeholders', 'dm', 'button', 'details', 'preset', 'mode', 'roles', 'log', 'security', 'button-set', 'advanced'):
+    for name in ('status', 'placeholders', 'dm', 'button', 'details', 'preset', 'mode', 'roles', 'log', 'security', 'button-set', 'bots', 'reliability', 'advanced'):
         assert f"name='{name}'" in source
 
 
