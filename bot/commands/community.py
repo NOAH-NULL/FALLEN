@@ -8,20 +8,6 @@ class Community(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name='level', description="Show a member's server level and XP")
-    @app_commands.guild_only()
-    async def level(self, i, member: discord.Member | None = None):
-        m = member or i.user
-        row = await self.bot.levels.get(i.guild_id, m.id)
-        level = row.level if row else 0
-        xp = row.xp if row else 0
-        needed = self.bot.levels.xp_needed(level)
-        embed = info_embed(f'Level • {m.display_name}', f'{m.mention} is progressing through the server.', thumbnail=m.display_avatar.url)
-        embed.add_field(name='Level', value=f'**{level}**', inline=True)
-        embed.add_field(name='XP', value=f'**{xp:,} / {needed:,}**', inline=True)
-        progress = min(10, int((xp / needed) * 10)) if needed else 10
-        embed.add_field(name='Progress', value='▰' * progress + '▱' * (10 - progress), inline=False)
-        await i.response.send_message(embed=embed)
 
 
 
