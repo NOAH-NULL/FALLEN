@@ -291,14 +291,18 @@ class GreetingWorker:
             else:
                 require_embed = False
             me = member.guild.me
-            if me and channel.permissions_for(me).send_messages:
-                if not channel.permissions_for(me).attach_files:
-                    raise discord.Forbidden(
-                        discord.Object(id=getattr(channel, "id", 0)), []
-                    )
-                if require_embed and not channel.permissions_for(me).embed_links:
-                    raise discord.Forbidden(
-                        discord.Object(id=getattr(channel, "id", 0)), []
+            if me:
+                permissions = channel.permissions_for(me)
+                missing = [
+                    name for name, ok in (
+                        ("Send Messages", permissions.send_messages),
+                        ("Attach Files", permissions.attach_files),
+                        ("Embed Links", permissions.embed_links if require_embed else True),
+                    ) if not ok
+                ]
+                if missing:
+                    raise ValueError(
+                        f"Missing permissions in {channel.mention}: {', '.join(missing)}"
                     )
             await self._send_public(
                 channel,
