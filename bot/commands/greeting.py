@@ -217,23 +217,7 @@ class Greeting(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.command(name='greet', aliases=['greeting'])
-    @commands.guild_only()
-    @commands.has_guild_permissions(manage_guild=True)
-    async def greeting_prefix_test(self, ctx, action: str = 'test', kind: str = 'welcome'):
-        action = action.lower().strip()
-        kind = kind.lower().strip()
-        if action != 'test':
-            return await ctx.send(
-                f'Use `{ctx.prefix}greet test welcome` or `{ctx.prefix}greet test goodbye`.'
-            )
-        ok, message = await self._run_test(
-            ctx.guild,
-            ctx.channel,
-            ctx.author,
-            kind,
-        )
-        await ctx.send(message if ok else f'❌ {message}')
+
 
 async def setup(bot):
     await bot.add_cog(Greeting(bot))
