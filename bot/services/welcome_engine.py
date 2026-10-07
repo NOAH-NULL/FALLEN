@@ -82,7 +82,7 @@ class WelcomeEngine:
             if value > 0 and value not in role_ids:
                 role_ids.append(value)
         legacy_role = legacy.get("autorole_id")
-        if legacy_role:
+        if not raw and legacy_role:
             try:
                 legacy_role = int(legacy_role)
                 if legacy_role not in role_ids:
