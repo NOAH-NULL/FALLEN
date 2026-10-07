@@ -143,7 +143,7 @@ class TextCommands(commands.Cog):
     @commands.group(name='greeting', aliases=['greet'], invoke_without_command=True)
     @commands.guild_only()
     async def greeting_group(self,ctx):
-        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|test`.')
+        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|preset|mode|roles|log|security|button-set|advanced|test`.')
     @greeting_group.command(name='channel')
     @commands.has_permissions(manage_guild=True)
     async def greeting_channel(self,ctx,kind:str,channel:discord.TextChannel):
@@ -189,17 +189,22 @@ class TextCommands(commands.Cog):
     @commands.has_permissions(manage_guild=True)
     async def greeting_status(self,ctx):
         cfg=await self.bot.guild_config.get(ctx.guild.id)
+        settings=await self.bot.welcome_engine.get(ctx.guild.id,cfg)
         welcome=ctx.guild.get_channel(cfg.get('welcome_channel_id')) if cfg.get('welcome_channel_id') else None
         goodbye=ctx.guild.get_channel(cfg.get('goodbye_channel_id')) if cfg.get('goodbye_channel_id') else None
+        buttons=[b for b in settings.get('buttons',[]) if b.get('enabled')]
+        roles=[f"<@&{rid}>" for rid in settings.get('auto_role_ids',[])]
         await ctx.send(
-            '**Greeting status**\n'
+            '**Welcome Engine status**\n'
             f'Welcome: {welcome.mention if welcome else "not configured"}\n'
             f'Goodbye: {goodbye.mention if goodbye else "not configured"}\n'
-            f'Welcome DM: {"enabled" if cfg.get("welcome_dm_enabled") else "disabled"}\n'
-            f'Button: {"enabled" if cfg.get("welcome_button_enabled") else "disabled"}\n'
-            f'Details: {"enabled" if cfg.get("welcome_show_details",True) else "disabled"}'
+            f'Engine: {settings.get("enabled")} • preset={settings.get("preset","full")}\n'
+            f'Public: {settings.get("public_enabled")} • DM: {settings.get("dm_enabled")}\n'
+            f'Auto roles: {", ".join(roles) if roles else "none"}\n'
+            f'Security: threshold={settings.get("new_account_days",7)}d • alerts={settings.get("alert_new_accounts")}\n'
+            f'Buttons: {len(buttons)}/5 • details={settings.get("show_details")}\n'
+            f'Retry: {settings.get("retry_attempts",2)} public + {settings.get("dm_retry",1)} DM • dedupe={settings.get("dedupe_seconds",90)}s'
         )
-
     @greeting_group.command(name='placeholders')
     @commands.has_permissions(manage_guild=True)
     async def greeting_placeholders(self,ctx):
@@ -239,6 +244,101 @@ class TextCommands(commands.Cog):
     async def greeting_details(self,ctx,enabled:bool):
         await self.bot.guild_config.update(ctx.guild.id,welcome_show_details=enabled)
         await ctx.send(f'✅ Welcome detail fields **{"enabled" if enabled else "disabled"}**.')
+
+    @greeting_group.command(name='preset')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_preset(self,ctx,preset:str):
+        preset=preset.lower().strip()
+        if preset not in {'minimal','onboarding','security','full'}:
+            return await ctx.send('❌ Preset must be: minimal, onboarding, security, or full.')
+        settings=await self.bot.welcome_engine.get(ctx.guild.id)
+        presets={
+            'minimal': {'enabled':True,'public_enabled':True,'dm_enabled':False,'show_details':True,'show_risk':False,'alert_new_accounts':False,'log_enabled':False,'auto_role_ids':[],'buttons':[]},
+            'onboarding': {'enabled':True,'public_enabled':True,'dm_enabled':True,'show_details':True,'show_risk':True,'alert_new_accounts':False,'log_enabled':False},
+            'security': {'enabled':True,'public_enabled':True,'dm_enabled':True,'show_details':True,'show_risk':True,'alert_new_accounts':True,'log_enabled':True,'new_account_days':14},
+            'full': {'enabled':True,'public_enabled':True,'dm_enabled':True,'show_details':True,'show_risk':True,'alert_new_accounts':True,'log_enabled':True,'new_account_days':7},
+        }
+        settings.update(presets[preset]); settings['preset']=preset
+        await self.bot.guild_config.update(ctx.guild.id,welcome_settings=self.bot.welcome_engine.normalize(settings))
+        await ctx.send(f'✅ Welcome Engine preset set to **{preset}**.')
+
+    @greeting_group.command(name='mode')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_mode(self,ctx,public:bool,dm:bool):
+        if not public and not dm:
+            return await ctx.send('❌ At least one of public or DM delivery must be enabled.')
+        await self.bot.welcome_engine.save(ctx.guild.id,public_enabled=public,dm_enabled=dm)
+        await ctx.send(f'✅ Welcome delivery: public={public}, DM={dm}.')
+
+    @greeting_group.command(name='roles')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_roles(self,ctx,role1:discord.Role=None,role2:discord.Role=None,role3:discord.Role=None,role4:discord.Role=None,role5:discord.Role=None):
+        roles=[r for r in (role1,role2,role3,role4,role5) if r]
+        me=ctx.guild.me
+        if me:
+            invalid=[r for r in roles if r>=me.top_role]
+            if invalid:
+                return await ctx.send('❌ I cannot assign: '+', '.join(r.mention for r in invalid))
+        await self.bot.welcome_engine.save(ctx.guild.id,auto_role_ids=[r.id for r in roles])
+        await ctx.send('✅ Welcome auto-roles: '+(', '.join(r.mention for r in roles) if roles else 'cleared'))
+
+    @greeting_group.command(name='log')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_log(self,ctx,enabled:bool,channel:discord.TextChannel=None):
+        if enabled and channel is None:
+            return await ctx.send('❌ Choose a log channel when enabling security alerts.')
+        if enabled:
+            me=ctx.guild.me; permissions=channel.permissions_for(me) if me else None
+            if not permissions or not permissions.send_messages or not permissions.embed_links:
+                return await ctx.send(f'❌ I cannot send embeds in {channel.mention}.')
+        await self.bot.welcome_engine.save(ctx.guild.id,log_enabled=enabled,log_channel_id=channel.id if channel else None)
+        await ctx.send(f'✅ Welcome security log {"enabled" if enabled else "disabled"}.')
+
+    @greeting_group.command(name='security')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_security(self,ctx,new_account_days:int,alert_new_accounts:bool):
+        if not 0<=new_account_days<=3650:
+            return await ctx.send('❌ New-account threshold must be between 0 and 3650 days.')
+        await self.bot.welcome_engine.save(ctx.guild.id,new_account_days=new_account_days,alert_new_accounts=alert_new_accounts,show_risk=True)
+        await ctx.send(f'✅ New-account detection: {new_account_days} days, alerts={alert_new_accounts}.')
+
+    @greeting_group.command(name='button-set')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_button_set(self,ctx,slot:int,enabled:bool,url:str=None,*,label:str=None):
+        if not 1<=slot<=5:
+            return await ctx.send('❌ Button slot must be between 1 and 5.')
+        settings=await self.bot.welcome_engine.get(ctx.guild.id)
+        buttons=list(settings.get('buttons') or [])
+        while len(buttons)<5:
+            buttons.append({'enabled':False,'label':'Open','url':'https://discord.com/'})
+        if enabled and (not url or not url.strip().startswith('https://')):
+            return await ctx.send('❌ An enabled link button requires an https:// URL.')
+        if label is not None and not label.strip():
+            return await ctx.send('❌ Button label cannot be empty.')
+        idx=slot-1
+        buttons[idx]={
+            'enabled':enabled,
+            'label':(label or buttons[idx].get('label') or 'Open').strip()[:80],
+            'url':(url or buttons[idx].get('url') or 'https://discord.com/').strip()[:2000],
+        }
+        await self.bot.welcome_engine.save(ctx.guild.id,buttons=buttons)
+        await ctx.send(f'✅ Welcome button slot {slot} {"enabled" if enabled else "disabled"}.')
+
+    @greeting_group.command(name='advanced')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_advanced(self,ctx):
+        settings=await self.bot.welcome_engine.get(ctx.guild.id)
+        await ctx.send(
+            '**Welcome Engine 2.0**\n'
+            f'Preset: {settings.get("preset","custom")}\n'
+            f'Public: {settings.get("public_enabled")} • DM: {settings.get("dm_enabled")}\n'
+            f'New-account threshold: {settings.get("new_account_days")}d\n'
+            f'Auto-roles: {len(settings.get("auto_role_ids",[]))}\n'
+            f'Buttons: {len([b for b in settings.get("buttons",[]) if b.get("enabled")})}/5\n'
+            f'Retries: {settings.get("retry_attempts")} / DM {settings.get("dm_retry")}\n'
+            f'Dedupe: {settings.get("dedupe_seconds")}s'
+        )
+
     @greeting_group.command(name='test')
     @commands.has_permissions(manage_guild=True)
     async def greeting_test(self,ctx,kind:str='welcome'):
