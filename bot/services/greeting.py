@@ -157,23 +157,27 @@ class GreetingRenderer:
         joined_at = getattr(member, 'joined_at', None)
         created_text = created_at.strftime('%Y-%m-%d') if created_at else 'Unknown'
         joined_text = joined_at.strftime('%Y-%m-%d') if joined_at else 'Unknown'
-        return (template or '').format(
-            mention=getattr(member, 'mention', str(member)),
-            name=getattr(member, 'display_name', str(member)),
-            username=getattr(member, 'name', str(member)),
-            server=getattr(guild, 'name', 'Server'),
-            count=count,
-            membercount=count,
-            inviter=(f'<@{inviter_id}>' if inviter_id else 'Unknown'),
-            inviter_name=(inviter_member.display_name if inviter_member else 'Unknown'),
-            invites=invite_uses,
-            account_age=cls._account_age(created_at),
-            account_created=created_text,
-            joined_at=joined_text,
-            boosts=int(getattr(guild, 'premium_subscription_count', 0) or 0),
-            server_id=getattr(guild, 'id', 0),
-            user_id=getattr(member, 'id', 0),
-        )
+        try:
+            return (template or '').format(
+                mention=getattr(member, 'mention', str(member)),
+                name=getattr(member, 'display_name', str(member)),
+                username=getattr(member, 'name', str(member)),
+                server=getattr(guild, 'name', 'Server'),
+                count=count,
+                membercount=count,
+                inviter=(f'<@{inviter_id}>' if inviter_id else 'Unknown'),
+                inviter_name=(inviter_member.display_name if inviter_member else 'Unknown'),
+                invites=invite_uses,
+                account_age=cls._account_age(created_at),
+                account_created=created_text,
+                joined_at=joined_text,
+                boosts=int(getattr(guild, 'premium_subscription_count', 0) or 0),
+                server_id=getattr(guild, 'id', 0),
+                user_id=getattr(member, 'id', 0),
+            )
+        except (KeyError, ValueError, IndexError):
+            logger.warning('Invalid greeting template; sending unformatted template')
+            return (template or '')[:1000]
 
     @classmethod
     def _composite_frame(cls, base, member, template, count, avatar, inviter_id=None, invite_uses=0):
