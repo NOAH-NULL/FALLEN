@@ -144,19 +144,23 @@ class Greeting(commands.Cog):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def status(self, i):
         cfg = await self.bot.guild_config.get(i.guild_id)
+        settings = await self.bot.welcome_engine.get(i.guild_id, cfg)
         welcome_channel = i.guild.get_channel(cfg.get('welcome_channel_id')) if cfg.get('welcome_channel_id') else None
         goodbye_channel = i.guild.get_channel(cfg.get('goodbye_channel_id')) if cfg.get('goodbye_channel_id') else None
+        buttons = [b for b in settings.get('buttons', []) if b.get('enabled')]
+        roles = [f"<@&{rid}>" for rid in settings.get('auto_role_ids', [])]
         lines = [
             f"**Welcome:** {welcome_channel.mention if welcome_channel else 'Not configured'}",
             f"**Goodbye:** {goodbye_channel.mention if goodbye_channel else 'Not configured'}",
-            f"**Welcome DM:** {'Enabled' if cfg.get('welcome_dm_enabled') else 'Disabled'}",
-            f"**Rules button:** {'Enabled' if cfg.get('welcome_button_enabled') else 'Disabled'}",
-            f"**Details:** {'Enabled' if cfg.get('welcome_show_details', True) else 'Disabled'}",
-            f"**Welcome embed:** {'Enabled' if cfg.get('welcome_embed_enabled', True) else 'Disabled'}",
-            f"**Goodbye embed:** {'Enabled' if cfg.get('goodbye_embed_enabled', True) else 'Disabled'}",
+            f"**Engine:** {'Enabled' if settings.get('enabled') else 'Disabled'} • preset={settings.get('preset', 'full')}",
+            f"**Public:** {'Enabled' if settings.get('public_enabled') else 'Disabled'} • **DM:** {'Enabled' if settings.get('dm_enabled') else 'Disabled'}",
+            f"**Auto roles:** {', '.join(roles) if roles else 'None'}",
+            f"**Security:** new-account threshold={settings.get('new_account_days', 7)}d • alerts={'on' if settings.get('alert_new_accounts') else 'off'}",
+            f"**Buttons:** {len(buttons)}/5 active • **Details:** {'on' if settings.get('show_details') else 'off'}",
+            f"**Retry:** {settings.get('retry_attempts', 2)} public + {settings.get('dm_retry', 1)} DM",
+            f"**Dedupe:** {settings.get('dedupe_seconds', 90)}s",
+            f"**Embeds:** welcome={'on' if cfg.get('welcome_embed_enabled', True) else 'off'} • goodbye={'on' if cfg.get('goodbye_embed_enabled', True) else 'off'}",
         ]
-        if cfg.get('welcome_button_enabled'):
-            lines.append(f"**Button:** `{(cfg.get('welcome_button_label') or 'Read the Rules')[:80]}` → {cfg.get('welcome_button_url') or 'Invalid/unset URL'}")
         await i.response.send_message('\n'.join(lines), ephemeral=True)
 
     @group.command(name='placeholders')
@@ -304,6 +308,130 @@ class Greeting(commands.Cog):
             return False, 'Greeting test failed unexpectedly. The full error is in the bot logs.'
 
         return True, f'✅ {kind.title()} test sent successfully.'
+
+
+    @group.command(name='preset')
+    @app_commands.guild_only()
+    @app_commands.choices(preset=[
+        app_commands.Choice(name='Minimal', value='minimal'),
+        app_commands.Choice(name='Onboarding', value='onboarding'),
+        app_commands.Choice(name='Security', value='security'),
+        app_commands.Choice(name='Full', value='full'),
+    ])
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def preset(self, i, preset: str):
+        settings = await self.bot.welcome_engine.get(i.guild_id)
+        presets = {
+            'minimal': {'enabled': True, 'public_enabled': True, 'dm_enabled': False, 'show_details': True, 'show_risk': False, 'alert_new_accounts': False, 'log_enabled': False, 'auto_role_ids': [], 'buttons': []},
+            'onboarding': {'enabled': True, 'public_enabled': True, 'dm_enabled': True, 'show_details': True, 'show_risk': True, 'alert_new_accounts': False, 'log_enabled': False},
+            'security': {'enabled': True, 'public_enabled': True, 'dm_enabled': True, 'show_details': True, 'show_risk': True, 'alert_new_accounts': True, 'log_enabled': True, 'new_account_days': 14},
+            'full': {'enabled': True, 'public_enabled': True, 'dm_enabled': True, 'show_details': True, 'show_risk': True, 'alert_new_accounts': True, 'log_enabled': True, 'new_account_days': 7},
+        }
+        settings.update(presets[preset])
+        settings['preset'] = preset
+        await self.bot.guild_config.update(i.guild_id, welcome_settings=self.bot.welcome_engine.normalize(settings))
+        await i.response.send_message(f'✅ Welcome Engine preset set to **{preset.title()}**.', ephemeral=True)
+
+    @group.command(name='mode')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def mode(self, i, public: bool, dm: bool):
+        if not public and not dm:
+            return await i.response.send_message('❌ At least one delivery surface must be enabled.', ephemeral=True)
+        await self.bot.welcome_engine.save(i.guild_id, public_enabled=public, dm_enabled=dm)
+        await i.response.send_message(
+            f'✅ Welcome delivery: public={"on" if public else "off"}, DM={"on" if dm else "off"}.',
+            ephemeral=True,
+        )
+
+    @group.command(name='roles')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def roles(self, i, role1: discord.Role = None, role2: discord.Role = None, role3: discord.Role = None, role4: discord.Role = None, role5: discord.Role = None):
+        roles = [r for r in (role1, role2, role3, role4, role5) if r]
+        me = i.guild.me
+        if me:
+            invalid = [r for r in roles if r >= me.top_role]
+            if invalid:
+                return await i.response.send_message(
+                    '❌ I cannot assign roles at or above my highest role: ' + ', '.join(r.mention for r in invalid),
+                    ephemeral=True,
+                )
+        await self.bot.welcome_engine.save(i.guild_id, auto_role_ids=[r.id for r in roles])
+        await i.response.send_message(
+            '✅ Welcome auto-roles: ' + (', '.join(r.mention for r in roles) if roles else 'cleared'),
+            ephemeral=True,
+        )
+
+    @group.command(name='log')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def log(self, i, enabled: bool, channel: discord.TextChannel = None):
+        if enabled and channel is None:
+            return await i.response.send_message('❌ Choose a log channel when enabling security alerts.', ephemeral=True)
+        if enabled:
+            me = i.guild.me
+            permissions = channel.permissions_for(me) if me else None
+            if not permissions or not permissions.send_messages or not permissions.embed_links:
+                return await i.response.send_message(f'❌ I cannot send embeds in {channel.mention}.', ephemeral=True)
+        await self.bot.welcome_engine.save(i.guild_id, log_enabled=enabled, log_channel_id=channel.id if channel else None)
+        await i.response.send_message(
+            f'✅ Welcome security log {"enabled" if enabled else "disabled"}' + (f' in {channel.mention}.' if enabled else '.'),
+            ephemeral=True,
+        )
+
+    @group.command(name='security')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def security(self, i, new_account_days: app_commands.Range[int, 0, 3650], alert_new_accounts: bool):
+        await self.bot.welcome_engine.save(
+            i.guild_id,
+            new_account_days=int(new_account_days),
+            alert_new_accounts=alert_new_accounts,
+            show_risk=True,
+        )
+        await i.response.send_message(
+            f'✅ New-account detection: {new_account_days} days, alerts {"on" if alert_new_accounts else "off"}.',
+            ephemeral=True,
+        )
+
+    @group.command(name='button-set')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def button_set(self, i, slot: app_commands.Range[int, 1, 5], enabled: bool, url: str = None, label: str = None):
+        settings = await self.bot.welcome_engine.get(i.guild_id)
+        buttons = list(settings.get('buttons') or [])
+        while len(buttons) < 5:
+            buttons.append({'enabled': False, 'label': 'Open', 'url': 'https://discord.com/'})
+        idx = int(slot) - 1
+        if enabled and (not url or not url.strip().startswith('https://')):
+            return await i.response.send_message('❌ An enabled link button requires an https:// URL.', ephemeral=True)
+        if label is not None and not label.strip():
+            return await i.response.send_message('❌ Button label cannot be empty.', ephemeral=True)
+        buttons[idx] = {
+            'enabled': enabled,
+            'label': (label or buttons[idx].get('label') or 'Open').strip()[:80],
+            'url': (url or buttons[idx].get('url') or 'https://discord.com/').strip()[:2000],
+        }
+        await self.bot.welcome_engine.save(i.guild_id, buttons=buttons)
+        await i.response.send_message(f'✅ Welcome button slot {slot} {"enabled" if enabled else "disabled"}.', ephemeral=True)
+
+    @group.command(name='advanced')
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def advanced(self, i):
+        settings = await self.bot.welcome_engine.get(i.guild_id)
+        await i.response.send_message(
+            '**Welcome Engine 2.0**\n'
+            f'Engine: {settings.get("preset", "custom")}\n'
+            f'Public: {settings.get("public_enabled")} • DM: {settings.get("dm_enabled")}\n'
+            f'New-account threshold: {settings.get("new_account_days")}d\n'
+            f'Auto-roles: {len(settings.get("auto_role_ids", []))}\n'
+            f'Buttons: {len([b for b in settings.get("buttons", []) if b.get("enabled")])}/5\n'
+            f'Retries: {settings.get("retry_attempts")} / DM {settings.get("dm_retry")}\n'
+            f'Dedupe: {settings.get("dedupe_seconds")}s',
+            ephemeral=True,
+        )
 
     @group.command(name='test')
     @app_commands.guild_only()
