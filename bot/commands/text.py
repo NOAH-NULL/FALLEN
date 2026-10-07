@@ -339,6 +339,41 @@ class TextCommands(commands.Cog):
         level=row.level if row else 0; xp=row.xp if row else 0
         await ctx.send(f'🏆 {member.mention}: level **{level}**, XP **{xp}/{self.bot.levels.xp_needed(level)}**.')
 
+    @commands.command(name='level-channel')
+    @commands.has_permissions(manage_guild=True)
+    @commands.guild_only()
+    async def level_channel(self,ctx,channel:discord.TextChannel):
+        me=ctx.guild.me
+        if me is None:
+            return await ctx.send('❌ I cannot resolve my server member.')
+        permissions=channel.permissions_for(me)
+        missing=[name for name,ok in (('View Channel',permissions.view_channel),('Send Messages',permissions.send_messages),('Embed Links',permissions.embed_links)) if not ok]
+        if missing:
+            return await ctx.send(f'❌ I cannot use {channel.mention}. Missing: **{", ".join(missing)}**.')
+        await self.bot.levels.update_settings(ctx.guild.id,announcement_channel_id=channel.id,announce=True)
+        await ctx.send(f'✅ Level-up announcements will now be sent only in {channel.mention}.')
+
+    @commands.command(name='level-channel-reset')
+    @commands.has_permissions(manage_guild=True)
+    @commands.guild_only()
+    async def level_channel_reset(self,ctx):
+        await self.bot.levels.update_settings(ctx.guild.id,announcement_channel_id=None)
+        await ctx.send('✅ Dedicated level-up channel disabled. Announcements use the channel where the level-up happened.')
+
+    @commands.command(name='level-xp-channel')
+    @commands.has_permissions(manage_guild=True)
+    @commands.guild_only()
+    async def level_xp_channel(self,ctx,channel:discord.TextChannel):
+        await self.bot.levels.update_settings(ctx.guild.id,xp_channels=[channel.id])
+        await ctx.send(f'✅ XP is now earned only in {channel.mention}.')
+
+    @commands.command(name='level-xp-channel-reset')
+    @commands.has_permissions(manage_guild=True)
+    @commands.guild_only()
+    async def level_xp_channel_reset(self,ctx):
+        await self.bot.levels.update_settings(ctx.guild.id,xp_channels=[])
+        await ctx.send('✅ XP channel restriction removed. XP can be earned in all eligible channels.')
+
     @commands.group(name='levelrole', invoke_without_command=True)
     @commands.guild_only()
     async def levelrole_group(self,ctx):
