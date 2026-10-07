@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from datetime import datetime, timezone
 import asyncio
 import base64
 import logging
@@ -129,14 +130,34 @@ class GreetingRenderer:
         except TypeError:
             return ImageFont.load_default()
 
+    @staticmethod
+    def _account_age(created_at):
+        if created_at is None:
+            return 'Unknown'
+        try:
+            days = max(0, (datetime.now(timezone.utc) - created_at).days)
+        except (TypeError, ValueError):
+            return 'Unknown'
+        years, remaining = divmod(days, 365)
+        months, days = divmod(remaining, 30)
+        parts = []
+        if years:
+            parts.append(f'{years}y')
+        if months:
+            parts.append(f'{months}mo')
+        if days or not parts:
+            parts.append(f'{days}d')
+        return ' '.join(parts)
+
     @classmethod
-    def _composite_frame(cls, base, member, template, count, avatar, inviter_id=None, invite_uses=0):
-        frame = ImageOps.fit(base.convert('RGBA'), cls.CARD_SIZE, Image.Resampling.LANCZOS)
-        frame.paste(avatar, cls.AVATAR_POS, avatar)
-        draw = ImageDraw.Draw(frame)
-        font = cls._get_font(26)
+    def format_template(cls, member, template, count, inviter_id=None, invite_uses=0):
         guild = getattr(member, 'guild', None)
-        text = template.format(
+        inviter_member = guild.get_member(inviter_id) if guild and inviter_id else None
+        created_at = getattr(member, 'created_at', None)
+        joined_at = getattr(member, 'joined_at', None)
+        created_text = created_at.strftime('%Y-%m-%d') if created_at else 'Unknown'
+        joined_text = joined_at.strftime('%Y-%m-%d') if joined_at else 'Unknown'
+        return (template or '').format(
             mention=getattr(member, 'mention', str(member)),
             name=getattr(member, 'display_name', str(member)),
             username=getattr(member, 'name', str(member)),
@@ -144,8 +165,23 @@ class GreetingRenderer:
             count=count,
             membercount=count,
             inviter=(f'<@{inviter_id}>' if inviter_id else 'Unknown'),
+            inviter_name=(inviter_member.display_name if inviter_member else 'Unknown'),
             invites=invite_uses,
+            account_age=cls._account_age(created_at),
+            account_created=created_text,
+            joined_at=joined_text,
+            boosts=int(getattr(guild, 'premium_subscription_count', 0) or 0),
+            server_id=getattr(guild, 'id', 0),
+            user_id=getattr(member, 'id', 0),
         )
+
+    @classmethod
+    def _composite_frame(cls, base, member, template, count, avatar, inviter_id=None, invite_uses=0):
+        frame = ImageOps.fit(base.convert('RGBA'), cls.CARD_SIZE, Image.Resampling.LANCZOS)
+        frame.paste(avatar, cls.AVATAR_POS, avatar)
+        draw = ImageDraw.Draw(frame)
+        font = cls._get_font(26)
+        text = cls.format_template(member, template, count, inviter_id, invite_uses)
         x, y = cls.TEXT_POS
         shadow = (0, 0, 0, 200)
         for offset_x, offset_y in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
