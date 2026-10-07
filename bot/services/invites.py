@@ -222,15 +222,44 @@ class InviteTracker:
     async def _join_loop(self):
         while not self._closing:
             member, suppress_greeting = await self._join_queue.get()
+            greeting_queued = suppress_greeting
             try:
                 inviter_id, invite_uses = await self.identify_join(member)
                 if not suppress_greeting:
-                    await self.bot.greeting_worker.submit(member, 'welcome', invite_id=inviter_id, invite_uses=invite_uses)
+                    greeting_queued = await self.bot.greeting_worker.submit(
+                        member,
+                        'welcome',
+                        invite_id=inviter_id,
+                        invite_uses=invite_uses,
+                    )
+                    if not greeting_queued:
+                        log.warning(
+                            'welcome greeting queue full guild=%s member=%s',
+                            member.guild.id, member.id,
+                        )
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception('invite attribution failed guild=%s member=%s', member.guild.id, member.id)
+                log.exception(
+                    'invite attribution failed guild=%s member=%s',
+                    member.guild.id, member.id,
+                )
             finally:
+                # Attribution is best-effort; the greeting must not disappear
+                # just because Discord's invite API or Redis temporarily failed.
+                if not suppress_greeting and not greeting_queued:
+                    try:
+                        fallback = await self.bot.greeting_worker.submit(member, 'welcome')
+                        if not fallback:
+                            log.warning(
+                                'welcome fallback queue full guild=%s member=%s',
+                                member.guild.id, member.id,
+                            )
+                    except Exception:
+                        log.exception(
+                            'welcome fallback failed guild=%s member=%s',
+                            member.guild.id, member.id,
+                        )
                 self._join_queue.task_done()
 
     async def record_leave(self, member: discord.Member) -> None:
