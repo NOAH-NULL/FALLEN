@@ -333,46 +333,25 @@ class Bot(commands.AutoShardedBot):
                 except discord.HTTPException:
                     log.warning('autorole failed guild=%s member=%s',m.guild.id,m.id)
 
-        # Welcome behavior follows bogusdeck/Discord-welcome-bot semantics:
-        # apply the configured member role, then send a timestamped embed to
-        # the explicitly configured welcome channel. Raid mode suppresses the
-        # greeting so a join spike cannot amplify channel traffic.
-        welcome_channel_id = cfg.get('welcome_channel_id')
-        if welcome_channel_id and not raid:
-            welcome_channel = m.guild.get_channel(welcome_channel_id)
-            if welcome_channel and hasattr(welcome_channel, 'send'):
+        # Welcome/goodbye delivery has one owner: GreetingWorker.
+        # Keeping welcome sending out of this gateway worker prevents duplicate
+        # welcome messages and keeps invite attribution + banner rendering in
+        # the same pipeline.
+        try:
+            queued = await self.invites.submit_join(m, suppress_greeting=raid)
+            if not queued and not raid:
+                fallback = await self.greeting_worker.submit(m, 'welcome')
+                if not fallback:
+                    log.warning('welcome queue full guild=%s member=%s', m.guild.id, m.id)
+        except Exception:
+            log.exception('welcome scheduling failed guild=%s member=%s', m.guild.id, m.id)
+            if not raid:
                 try:
-                    description = str(cfg.get('welcome_embed_description') or cfg.get('welcome_message') or
-                                      'Welcome {mention} to {server}!').format(
-                        mention=m.mention,
-                        name=m.display_name,
-                        username=m.name,
-                        server=m.guild.name,
-                        count=m.guild.member_count or 0,
-                        membercount=m.guild.member_count or 0,
-                    )
-                    if cfg.get('welcome_embed_enabled', True):
-                        embed = discord.Embed(
-                            title=str(cfg.get('welcome_embed_title') or 'Welcome!'),
-                            description=description[:4096],
-                            color=int(cfg.get('welcome_embed_color') or 5793266),
-                            timestamp=discord.utils.utcnow(),
-                        )
-                        if m.guild.icon:
-                            embed.set_thumbnail(url=m.guild.icon.url)
-                        await welcome_channel.send(
-                            embed=embed,
-                            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                        )
-                    else:
-                        await welcome_channel.send(
-                            description[:2000],
-                            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                        )
-                except (discord.HTTPException, ValueError, KeyError):
-                    log.warning('welcome message failed guild=%s member=%s',m.guild.id,m.id,exc_info=True)
-        # Invite HTTP attribution is deliberately off the critical join path.
-        await self.invites.submit_join(m, suppress_greeting=raid)
+                    fallback = await self.greeting_worker.submit(m, 'welcome')
+                    if not fallback:
+                        log.warning('welcome fallback queue full guild=%s member=%s', m.guild.id, m.id)
+                except Exception:
+                    log.exception('welcome fallback failed guild=%s member=%s', m.guild.id, m.id)
     async def process_member_remove(self,m):
         await self.invites.record_leave(m)
         await self.greeting_worker.submit(m,'goodbye')
