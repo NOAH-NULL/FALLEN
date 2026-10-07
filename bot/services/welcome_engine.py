@@ -213,6 +213,9 @@ class WelcomeEngine:
             except discord.Forbidden:
                 raise
             except discord.HTTPException as exc:
+                status = int(getattr(exc, "status", 0) or 0)
+                if status != 429 and not 500 <= status < 600:
+                    raise
                 last = exc
                 if attempt >= attempts:
                     raise
