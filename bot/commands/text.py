@@ -332,6 +332,20 @@ class TextCommands(commands.Cog):
         await self.bot.welcome_engine.save(ctx.guild.id,buttons=buttons)
         await ctx.send(f'✅ Welcome button slot {slot} {"enabled" if enabled else "disabled"}.')
 
+    @greeting_group.command(name='bots')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_bots(self,ctx,enabled:bool):
+        await self.bot.welcome_engine.save(ctx.guild.id,include_bots=enabled)
+        await ctx.send(f'✅ Welcome messages for bot accounts are now **{"enabled" if enabled else "disabled"}**.')
+
+    @greeting_group.command(name='reliability')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_reliability(self,ctx,retry_attempts:int,dm_retry:int,dedupe_seconds:int):
+        if not 0<=retry_attempts<=4 or not 0<=dm_retry<=2 or not 0<=dedupe_seconds<=600:
+            return await ctx.send('❌ Values out of range: public retries 0-4, DM retries 0-2, duplicate window 0-600s.')
+        await self.bot.welcome_engine.save(ctx.guild.id,retry_attempts=retry_attempts,dm_retry=dm_retry,dedupe_seconds=dedupe_seconds)
+        await ctx.send(f'✅ Reliability tuned: public retries={retry_attempts}, DM retries={dm_retry}, duplicate window={dedupe_seconds}s.')
+
     @greeting_group.command(name='advanced')
     @commands.has_permissions(manage_guild=True)
     async def greeting_advanced(self,ctx):
