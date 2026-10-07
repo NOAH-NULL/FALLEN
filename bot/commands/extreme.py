@@ -22,9 +22,10 @@ class Extreme(commands.Cog):
 
     @v16.command(name='help', description='Show V16 capability domains')
     async def help_cmd(self, ctx):
-        lines=[]
-        for category,names in FEATURES.items():
-            active=sum(bool((await self.bot.extreme.get(ctx.guild.id)).get(n,False)) for n in names)
+        state = await self.bot.extreme.get(ctx.guild.id)
+        lines = []
+        for category, names in FEATURES.items():
+            active = sum(1 for name in names if state.get(name, False))
             lines.append(f'**{category.title()}** — {active}/{len(names)}')
         await ctx.send('\n'.join(lines))
 
@@ -97,40 +98,72 @@ class Extreme(commands.Cog):
 
     @v16.command(name='rep', description='Give one reputation point to a member')
     async def rep(self, ctx, member: discord.Member):
-        if member.id==ctx.author.id: return await ctx.send('❌ You cannot give reputation to yourself.')
-        score=await self.bot.extreme.reputation_change(ctx.guild.id,member.id,1)
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'server_reputation'):
+            return await ctx.send('❌ Server reputation is disabled. Enable the feature first.')
+        if member.id == ctx.author.id:
+            return await ctx.send('❌ You cannot give reputation to yourself.')
+        score = await self.bot.extreme.reputation_change(ctx.guild.id, member.id, 1)
         await ctx.send(f'⭐ {member.mention} now has **{score}** reputation.')
 
     @v16.command(name='playlist-save', description='Save a text-based playlist for later music integration')
     async def playlist_save(self, ctx, name: str, tracks: str):
-        vals=[x.strip() for x in tracks.split('|') if x.strip()]
-        if not vals: return await ctx.send('❌ Provide tracks separated by `|`.')
-        await self.bot.extreme.save_playlist(ctx.guild.id,ctx.author.id,name,vals)
-        await ctx.send(f'🎵 Saved playlist `{name}` with **{len(vals)}** tracks.')
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'personal_playlists'):
+            return await ctx.send('❌ Personal playlists are disabled. Enable the feature first.')
+        vals = [x.strip() for x in tracks.split('|') if x.strip()]
+        if not vals:
+            return await ctx.send('❌ Provide tracks separated by |.')
+        await self.bot.extreme.save_playlist(ctx.guild.id, ctx.author.id, name, vals)
+        await ctx.send(f'🎵 Saved playlist {name} with **{len(vals)}** tracks.')
 
     @v16.command(name='playlist-list', description='List your saved playlists')
     async def playlist_list(self, ctx):
-        rows=await self.bot.extreme.playlists(ctx.guild.id,ctx.author.id)
-        await ctx.send('\n'.join(f'🎵 `{r.name}` — {len(r.tracks)} tracks' for r in rows) if rows else 'No playlists saved.')
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'personal_playlists'):
+            return await ctx.send('❌ Personal playlists are disabled. Enable the feature first.')
+        rows = await self.bot.extreme.playlists(ctx.guild.id, ctx.author.id)
+        if not rows:
+            return await ctx.send('No playlists saved.')
+        await ctx.send('\n'.join(f'🎵 {r.name} — {len(r.tracks)} tracks' for r in rows))
 
     @v16.command(name='temp-timeout', description='Temporarily timeout a member')
     @commands.has_guild_permissions(moderate_members=True)
     async def temp_timeout(self, ctx, member: discord.Member, minutes: int, *, reason: str = 'Temporary timeout'):
-        if not 1 <= minutes <= 10080: return await ctx.send('❌ Duration must be 1–10080 minutes.')
-        if member >= ctx.guild.me: return await ctx.send('❌ I cannot moderate that member.')
-        await member.timeout(discord.utils.utcnow()+timedelta(minutes=minutes), reason=reason[:512])
-        if await self.bot.extreme.enabled(ctx.guild.id,'scheduled_punishments'):
-            await self.bot.extreme.schedule(ctx.guild.id,member.id,'timeout',discord.utils.utcnow()+timedelta(minutes=minutes))
+        if not 1 <= minutes <= 10080:
+            return await ctx.send('❌ Duration must be 1–10080 minutes.')
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'temporary_timeouts'):
+            return await ctx.send('❌ Temporary timeouts are disabled. Enable the feature first.')
+        if member >= ctx.guild.me:
+            return await ctx.send('❌ I cannot moderate that member.')
+        await member.timeout(
+            discord.utils.utcnow() + timedelta(minutes=minutes),
+            reason=reason[:512],
+        )
         await ctx.send(f'⏱️ Timed out {member.mention} for **{minutes} minutes**.')
 
     @v16.command(name='temp-ban', description='Temporarily ban a member')
     @commands.has_guild_permissions(ban_members=True)
     async def temp_ban(self, ctx, member: discord.Member, minutes: int, *, reason: str = 'Temporary ban'):
-        if not 1 <= minutes <= 43200: return await ctx.send('❌ Duration must be 1–43200 minutes.')
-        if member >= ctx.guild.me: return await ctx.send('❌ I cannot moderate that member.')
+        if not 1 <= minutes <= 43200:
+            return await ctx.send('❌ Duration must be 1–43200 minutes.')
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'temporary_bans'):
+            return await ctx.send('❌ Temporary bans are disabled. Enable the feature first.')
+        if not await self.bot.extreme.enabled(ctx.guild.id, 'scheduled_punishments'):
+            return await ctx.send('❌ Scheduled punishments are disabled, so a temporary ban cannot be auto-lifted safely.')
+        if member >= ctx.guild.me:
+            return await ctx.send('❌ I cannot moderate that member.')
         await member.ban(reason=reason[:512])
-        if await self.bot.extreme.enabled(ctx.guild.id,'temporary_bans'):
-            await self.bot.extreme.schedule(ctx.guild.id,member.id,'ban',discord.utils.utcnow()+timedelta(minutes=minutes))
+        try:
+            await self.bot.extreme.schedule(
+                ctx.guild.id,
+                member.id,
+                'ban',
+                discord.utils.utcnow() + timedelta(minutes=minutes),
+            )
+        except Exception:
+            try:
+                await ctx.guild.unban(member, reason='Rollback: temporary-ban scheduling failed')
+            except discord.HTTPException:
+                pass
+            raise
         await ctx.send(f'🔨 Temporarily banned **{member}** for **{minutes} minutes**.')
 
     @v16.command(name='ticket-note', description='Add a staff note to the current V16 ticket')
