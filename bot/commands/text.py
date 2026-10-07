@@ -140,7 +140,7 @@ class TextCommands(commands.Cog):
     @commands.has_permissions(manage_guild=True)
     async def settings_autorole(self,ctx,role:discord.Role=None): await self.autorole.callback(self,ctx,role)
 
-    @commands.group(name='greeting', invoke_without_command=True)
+    @commands.group(name='greeting', aliases=['greet'], invoke_without_command=True)
     @commands.guild_only()
     async def greeting_group(self,ctx):
         if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|test`.')
@@ -188,8 +188,46 @@ class TextCommands(commands.Cog):
     @greeting_group.command(name='test')
     @commands.has_permissions(manage_guild=True)
     async def greeting_test(self,ctx,kind:str='welcome'):
-        if kind not in ('welcome','goodbye'): return await ctx.send('kind must be welcome or goodbye')
-        await self.bot.greeting_worker.submit(ctx.author,kind,force_channel=ctx.channel); await ctx.send('Queued a test card.')
+        kind=kind.lower().strip()
+        if kind not in ('welcome','goodbye'):
+            return await ctx.send('❌ kind must be `welcome` or `goodbye`.')
+        cfg=await self.bot.guild_config.get(ctx.guild.id)
+        require_embed=bool(cfg.get(f'{kind}_embed_enabled',True))
+        me=ctx.guild.me
+        if me is None:
+            return await ctx.send('❌ I cannot resolve my server member.')
+        permissions=ctx.channel.permissions_for(me)
+        missing=[name for name,ok in (
+            ('View Channel',permissions.view_channel),
+            ('Send Messages',permissions.send_messages),
+            ('Attach Files',permissions.attach_files),
+            ('Embed Links',permissions.embed_links if require_embed else True),
+        ) if not ok]
+        if missing:
+            return await ctx.send(f'❌ I am missing: **{", ".join(missing)}** in {ctx.channel.mention}.')
+        try:
+            await self.bot.greeting_worker.deliver(
+                ctx.author,
+                kind,
+                force_channel=ctx.channel,
+            )
+        except ValueError as exc:
+            return await ctx.send(f'❌ Greeting test failed: `{exc}`.')
+        except discord.Forbidden:
+            return await ctx.send('❌ Discord denied the greeting send. Check my channel permissions.')
+        except discord.HTTPException as exc:
+            self.bot.log.warning(
+                'prefix greeting test failed guild=%s kind=%s status=%s',
+                ctx.guild.id, kind, getattr(exc,'status','?')
+            )
+            return await ctx.send('❌ Discord rejected the greeting test (`' + str(getattr(exc,'status','unknown')) + '`).')
+        except Exception:
+            self.bot.log.exception(
+                'prefix greeting test crashed guild=%s kind=%s user=%s',
+                ctx.guild.id, kind, ctx.author.id
+            )
+            return await ctx.send('❌ Greeting test failed unexpectedly. Check the bot logs.')
+        await ctx.send(f'✅ {kind.title()} test sent successfully.')
 
     @commands.group(name='custom', invoke_without_command=True)
     @commands.guild_only()
