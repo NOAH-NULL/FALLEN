@@ -127,10 +127,14 @@ class GreetingWorker:
         if kind == 'welcome' and cfg.get('welcome_dm_enabled'):
             dm_template = cfg.get('welcome_dm_message') or DEFAULT_MESSAGES['welcome']
             dm_text = self._format(dm_template, member, count, invite_id, invite_uses)[:1900]
+            try:
+                dm_color = int(cfg.get('welcome_embed_color') or DEFAULT_COLORS['welcome'])
+            except (TypeError, ValueError):
+                dm_color = DEFAULT_COLORS['welcome']
             dm_embed = discord.Embed(
                 title=self._format(cfg.get('welcome_embed_title') or 'Welcome!', member, count, invite_id, invite_uses)[:256],
                 description=dm_text,
-                color=int(cfg.get('welcome_embed_color') or DEFAULT_COLORS['welcome']),
+                color=dm_color,
             )
             if member.guild.icon:
                 dm_embed.set_author(name=member.guild.name, icon_url=member.guild.icon.url)
