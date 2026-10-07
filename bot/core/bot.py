@@ -35,7 +35,7 @@ from bot.core.app_errors import handle_app_command_error
 from bot.core.prefix_errors import handle_prefix_command_error
 from bot.ui import info_embed
 log=logging.getLogger('bot')
-EXTENSIONS=('bot.commands.greeting','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.extreme')
+EXTENSIONS=('bot.commands.greeting','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.extreme','bot.commands.levels')
 class Bot(commands.AutoShardedBot):
     def __init__(self,settings):
         intents=discord.Intents.default(); intents.members=True; intents.message_content=True
