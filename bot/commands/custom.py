@@ -11,6 +11,7 @@ class Custom(commands.Cog):
     group = app_commands.Group(name='custom', description='Create and use server custom commands')
 
     @group.command(name='set', description='Create or update a custom prefix command')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set(self, i, name: str, response: str):
         clean = name.lower().strip().replace(' ', '-')[:64]
@@ -20,6 +21,7 @@ class Custom(commands.Cog):
         await i.response.send_message(embed=success_embed('Custom command saved', f'Use `{self.bot.command_prefix}{clean}` to run it.'))
 
     @group.command(name='use', description='Run a saved custom command')
+    @app_commands.guild_only()
     async def use(self, i, name: str):
         clean = name.lower().strip().replace(' ', '-')[:64]
         response = await self.bot.custom_commands.get(i.guild_id, clean)
@@ -28,6 +30,7 @@ class Custom(commands.Cog):
         await i.response.send_message(response[:1900], allowed_mentions=discord.AllowedMentions.none())
 
     @group.command(name='remove', description='Delete a custom prefix command')
+    @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def remove(self, i, name: str):
         clean = name.lower().strip().replace(' ', '-')[:64]
@@ -35,6 +38,7 @@ class Custom(commands.Cog):
         await i.response.send_message(embed=success_embed('Custom command removed', f'`{self.bot.command_prefix}{clean}` has been removed.'))
 
     @group.command(name='list', description='List saved custom commands')
+    @app_commands.guild_only()
     async def list_commands(self, i):
         # Keep this read-only command intentionally lightweight; the service owns persistence.
         from sqlalchemy import select
