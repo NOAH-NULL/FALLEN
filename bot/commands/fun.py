@@ -3,7 +3,6 @@ from discord import app_commands
 from discord.ext import commands
 from bot.ui import info_embed
 
-# The 'fuck' action is intentionally a non-sexual, emphatic cartoon reaction.
 SAFE_ACTIONS = {
     'hug': ('hug', '🤗', 'gave a friendly hug to'),
     'highfive': ('highfive', '✋', 'gave a high-five to'),
