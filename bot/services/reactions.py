@@ -32,6 +32,8 @@ class ReactionGifService:
         self._cache_ttl = 900.0
         self._failure_ttl = 8.0
         self._max_cache = 256
+        self._recent: dict[str, list[str]] = {}
+        self._recent_limit = 8
 
     async def start(self):
         if self._session is None or self._session.closed:
@@ -42,6 +44,7 @@ class ReactionGifService:
             await self._session.close()
         self._cache.clear()
         self._locks.clear()
+        self._recent.clear()
 
     async def _from_giphy(self, action: str) -> Optional[str]:
         if not self.giphy_api_key:
@@ -110,13 +113,22 @@ class ReactionGifService:
                 ('tenor', self._from_tenor),
                 ('otakugifs', self._from_otakugifs),
             )
+            recent = self._recent.setdefault(action, [])
             for provider_name, provider in providers:
-                try:
-                    url = await asyncio.wait_for(provider(action), timeout=0.9)
-                except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
-                    log.warning('reaction GIF provider unavailable provider=%s action=%s', provider_name, action)
+                for _ in range(3):
+                    try:
+                        candidate = await asyncio.wait_for(provider(action), timeout=0.9)
+                    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                        log.warning('reaction GIF provider unavailable provider=%s action=%s', provider_name, action)
+                        candidate = None
+                    if candidate and candidate not in recent:
+                        url = candidate
+                        break
                 if url:
                     break
+            if url:
+                recent.append(url)
+                del recent[:-self._recent_limit]
             # Cache only failures briefly. Successful GIF URLs are never cached,
             # so repeated commands do not keep serving the same animation.
             if url is None:
