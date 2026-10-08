@@ -145,7 +145,7 @@ class TextCommands(commands.Cog):
     @commands.group(name='greeting', aliases=['greet'], invoke_without_command=True)
     @commands.guild_only()
     async def greeting_group(self,ctx):
-        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greeting channel|message|banner|embed|dm|button|details|status|placeholders|preset|mode|roles|log|security|button-set|bots|reliability|advanced|test`.')
+        if ctx.invoked_subcommand is None: await ctx.send(f'Use `{ctx.prefix}greet channel|message|banner|embed|dm|button|details|status|placeholders|preset|mode|roles|log|security|button-set|bots|reliability|advanced|test|welcome|goodbye`.')
     @greeting_group.command(name='channel')
     @commands.has_permissions(manage_guild=True)
     async def greeting_channel(self,ctx,kind:str,channel:discord.TextChannel):
@@ -406,6 +406,16 @@ class TextCommands(commands.Cog):
             )
             return await ctx.send('❌ Greeting test failed unexpectedly. Check the bot logs.')
         await ctx.send(f'✅ {kind.title()} test sent successfully.')
+
+    @greeting_group.command(name='welcome')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_welcome_test(self,ctx):
+        await self.greeting_test.callback(self,ctx,'welcome')
+
+    @greeting_group.command(name='goodbye')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_goodbye_test(self,ctx):
+        await self.greeting_test.callback(self,ctx,'goodbye')
 
     @commands.group(name='custom', invoke_without_command=True)
     @commands.guild_only()
