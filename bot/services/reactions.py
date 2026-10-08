@@ -32,8 +32,8 @@ class ReactionGifService:
         self._cache_ttl = 900.0
         self._failure_ttl = 8.0
         self._max_cache = 256
-        self._recent: dict[str, list[str]] = {}
-        self._recent_limit = 8
+        self._gif_pool: dict[str, set[str]] = {}
+        self._gif_used: dict[str, set[str]] = {}
 
     async def start(self):
         if self._session is None or self._session.closed:
@@ -44,11 +44,12 @@ class ReactionGifService:
             await self._session.close()
         self._cache.clear()
         self._locks.clear()
-        self._recent.clear()
+        self._gif_pool.clear()
+        self._gif_used.clear()
 
-    async def _from_giphy(self, action: str) -> Optional[str]:
+    async def _from_giphy(self, action: str) -> list[str]:
         if not self.giphy_api_key:
-            return None
+            return []
         async with self._session.get(self.GIPHY_URL, params={
             'api_key': self.giphy_api_key,
             'q': f'anime {action} reaction',
@@ -63,11 +64,11 @@ class ReactionGifService:
                 for item in data.get('data', [])
                 if item.get('images', {}).get('original', {}).get('url')
             ]
-            return random.choice(results) if results else None
+            return results
 
-    async def _from_tenor(self, action: str) -> Optional[str]:
+    async def _from_tenor(self, action: str) -> list[str]:
         if not self.tenor_api_key:
-            return None
+            return []
         async with self._session.get(self.TENOR_URL, params={
             'key': self.tenor_api_key,
             'q': f'anime {action} reaction',
@@ -83,58 +84,64 @@ class ReactionGifService:
                 for result in data.get('results', [])
                 if result.get('media_formats', {}).get('gif', {}).get('url')
             ]
-            return random.choice(results) if results else None
+            return results
 
-    async def _from_otakugifs(self, action: str) -> Optional[str]:
+    async def _from_otakugifs(self, action: str) -> list[str]:
         async with self._session.get(self.OTAKU_GIFS_URL, params={'reaction': action}) as response:
             if response.status != 200:
-                return None
+                return []
             data = await response.json()
-            return data.get('url')
+            return [data.get('url')] if data.get('url') else []
 
     async def get(self, action: str) -> Optional[str]:
         action = self.ALIASES.get(action, action)
         now = time.monotonic()
-        # Positive GIFs are deliberately not cached: every action invocation
-        # should be able to receive a different result.
+
+        # Only failures are cached. Successful GIF URLs are never cached.
         cached = self._cache.get(action)
-        if cached and not cached[1] and now - cached[0] < self._failure_ttl:
+        if cached and cached[1] is None and now - cached[0] < self._failure_ttl:
             return None
+
         lock = self._locks.setdefault(action, asyncio.Lock())
         async with lock:
             now = time.monotonic()
             cached = self._cache.get(action)
-            if cached and now - cached[0] < (self._cache_ttl if cached[1] else self._failure_ttl):
-                return cached[1]
+            if cached and cached[1] is None and now - cached[0] < self._failure_ttl:
+                return None
+
             await self.start()
-            url: Optional[str] = None
+            pool = self._gif_pool.setdefault(action, set())
+            used = self._gif_used.setdefault(action, set())
             providers = (
                 ('giphy', self._from_giphy),
                 ('tenor', self._from_tenor),
                 ('otakugifs', self._from_otakugifs),
             )
-            recent = self._recent.setdefault(action, [])
+
+            # Refresh providers and retain every unique URL discovered.
             for provider_name, provider in providers:
-                for _ in range(3):
-                    try:
-                        candidate = await asyncio.wait_for(provider(action), timeout=0.9)
-                    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
-                        log.warning('reaction GIF provider unavailable provider=%s action=%s', provider_name, action)
-                        candidate = None
-                    if candidate and candidate not in recent:
-                        url = candidate
-                        break
-                if url:
-                    break
-            if url:
-                recent.append(url)
-                del recent[:-self._recent_limit]
-            # Cache only failures briefly. Successful GIF URLs are never cached,
-            # so repeated commands do not keep serving the same animation.
-            if url is None:
+                try:
+                    results = await asyncio.wait_for(provider(action), timeout=1.2)
+                except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                    log.warning('reaction GIF provider unavailable provider=%s action=%s', provider_name, action)
+                    results = []
+                for candidate in results:
+                    if candidate:
+                        pool.add(candidate)
+
+            available = list(pool - used)
+            # Only reuse GIFs after every known GIF has been consumed.
+            if not available and pool:
+                used.clear()
+                available = list(pool)
+
+            if not available:
                 self._cache[action] = (time.monotonic(), None)
-            else:
-                self._cache.pop(action, None)
+                return None
+
+            url = random.choice(available)
+            used.add(url)
+            self._cache.pop(action, None)
             if len(self._cache) > self._max_cache:
                 oldest = min(self._cache, key=lambda k: self._cache[k][0])
                 self._cache.pop(oldest, None)
