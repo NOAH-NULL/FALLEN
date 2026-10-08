@@ -7,6 +7,7 @@ from bot.ui import info_embed
 SAFE_ACTIONS = {
     'hug': ('hug', '🤗', 'gave a friendly hug to'),
     'highfive': ('highfive', '✋', 'gave a high-five to'),
+    'fistbump': ('fistbump', '👊', 'fist-bumped'),
     'pat': ('pat', '🫳', 'gave a friendly pat to'),
     'poke': ('poke', '👉', 'poked'),
     'bonk': ('bonk', '🔨', 'bonked'),
@@ -28,7 +29,7 @@ SAFE_ACTIONS = {
     'pout': ('pout', '😗', 'pouted at'),
     'blush': ('blush', '😊', 'blushed at'),
     'kill': ('punch', '💀', 'cartoonishly defeated'),
-    'fuck': ('bonk', '💢', 'shouted a very emphatic “FUCK!” at'),
+    'wreck': ('punch', '💥', 'absolutely wrecked'),
 }
 SELF_ACTIONS = {'dance','smile','cry','shrug','sleep','pout','blush'}
 
@@ -55,6 +56,10 @@ class Fun(commands.Cog):
     @app_commands.command(name='hug', description='A polished Fallen community action')
     async def hug(self, interaction: discord.Interaction, member: discord.Member):
         await self._action(interaction, 'hug', member)
+
+    @app_commands.command(name='fistbump', description='A friendly cartoon fist-bump action')
+    async def fistbump(self, interaction: discord.Interaction, member: discord.Member):
+        await self._action(interaction, 'fistbump', member)
 
     @app_commands.command(name='highfive', description='A polished Fallen community action')
     async def highfive(self, interaction: discord.Interaction, member: discord.Member):
@@ -140,8 +145,8 @@ class Fun(commands.Cog):
     async def blush(self, interaction: discord.Interaction, member: discord.Member | None = None):
         await self._action(interaction, 'blush', member)
 
-    @app_commands.command(name='fuck', description='A polished Fallen community action')
-    async def fuck(self, interaction: discord.Interaction, member: discord.Member | None = None):
-        await self._action(interaction, 'fuck', member)
+    @app_commands.command(name='wreck', description='A cartoon action with a GIF')
+    async def wreck(self, interaction: discord.Interaction, member: discord.Member):
+        await self._action(interaction, 'wreck', member)
 
 async def setup(bot): await bot.add_cog(Fun(bot))
