@@ -358,7 +358,7 @@ class TextCommands(commands.Cog):
             f'Public: {settings.get("public_enabled")} • DM: {settings.get("dm_enabled")}\n'
             f'New-account threshold: {settings.get("new_account_days")}d\n'
             f'Auto-roles: {len(settings.get("auto_role_ids",[]))}\n'
-            f'Buttons: {len([b for b in settings.get("buttons",[]) if b.get("enabled")})}/5\n'
+            f'Buttons: {len([b for b in settings.get("buttons",[]) if b.get("enabled")])}/5\n'
             f'Retries: {settings.get("retry_attempts")} / DM {settings.get("dm_retry")}\n'
             f'Dedupe: {settings.get("dedupe_seconds")}s'
         )
