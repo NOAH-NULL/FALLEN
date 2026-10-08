@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import time
+import random
 from typing import Optional
 import aiohttp
 
@@ -54,11 +55,12 @@ class ReactionGifService:
             if response.status != 200:
                 return None
             data = await response.json()
-            return next((
+            results = [
                 item.get('images', {}).get('original', {}).get('url')
                 for item in data.get('data', [])
                 if item.get('images', {}).get('original', {}).get('url')
-            ), None)
+            ]
+            return random.choice(results) if results else None
 
     async def _from_tenor(self, action: str) -> Optional[str]:
         if not self.tenor_api_key:
@@ -73,11 +75,12 @@ class ReactionGifService:
             if response.status != 200:
                 return None
             data = await response.json()
-            return next((
+            results = [
                 result.get('media_formats', {}).get('gif', {}).get('url')
                 for result in data.get('results', [])
                 if result.get('media_formats', {}).get('gif', {}).get('url')
-            ), None)
+            ]
+            return random.choice(results) if results else None
 
     async def _from_otakugifs(self, action: str) -> Optional[str]:
         async with self._session.get(self.OTAKU_GIFS_URL, params={'reaction': action}) as response:
@@ -89,9 +92,11 @@ class ReactionGifService:
     async def get(self, action: str) -> Optional[str]:
         action = self.ALIASES.get(action, action)
         now = time.monotonic()
+        # Positive GIFs are deliberately not cached: every action invocation
+        # should be able to receive a different result.
         cached = self._cache.get(action)
-        if cached and now - cached[0] < (self._cache_ttl if cached[1] else 15.0):
-            return cached[1]
+        if cached and not cached[1] and now - cached[0] < self._failure_ttl:
+            return None
         lock = self._locks.setdefault(action, asyncio.Lock())
         async with lock:
             now = time.monotonic()
@@ -112,8 +117,12 @@ class ReactionGifService:
                     log.warning('reaction GIF provider unavailable provider=%s action=%s', provider_name, action)
                 if url:
                     break
-            # Positive results stay hot; failures expire quickly so recovery is fast.
-            self._cache[action] = (time.monotonic(), url)
+            # Cache only failures briefly. Successful GIF URLs are never cached,
+            # so repeated commands do not keep serving the same animation.
+            if url is None:
+                self._cache[action] = (time.monotonic(), None)
+            else:
+                self._cache.pop(action, None)
             if len(self._cache) > self._max_cache:
                 oldest = min(self._cache, key=lambda k: self._cache[k][0])
                 self._cache.pop(oldest, None)
