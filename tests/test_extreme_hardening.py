@@ -19,6 +19,9 @@ class FakeResult:
     def scalar_one_or_none(self):
         return self.value
 
+    def scalar_one(self):
+        return self.value
+
     def scalars(self):
         return self
 
@@ -115,3 +118,32 @@ async def test_schedule_rejects_naive_timestamps():
     service = ExtremeService(FakeDB())
     with pytest.raises(ValueError, match="timezone-aware"):
         await service.schedule(1, 2, "ban", datetime(2030, 1, 1))
+
+
+class QueuedSession(FakeSession):
+    def __init__(self, values):
+        super().__init__()
+        self.values = list(values)
+
+    async def execute(self, statement):
+        self.statement = statement
+        return FakeResult(self.values.pop(0))
+
+
+class QueuedDB(FakeDB):
+    def __init__(self, values):
+        self.session_obj = QueuedSession(values)
+
+
+@pytest.mark.asyncio
+async def test_automod_rejects_rules_over_total_limit():
+    service = ExtremeService(QueuedDB([None, 100]))
+    with pytest.raises(ValueError, match="at most 100 AutoMod rules"):
+        await service.upsert_automod_rule(1, "new-rule", "domain_blacklist", "bad.example")
+
+
+@pytest.mark.asyncio
+async def test_automod_rejects_regex_rules_over_runtime_limit():
+    service = ExtremeService(QueuedDB([None, 10, 50]))
+    with pytest.raises(ValueError, match="at most 50 regex rules"):
+        await service.upsert_automod_rule(1, "new-regex", "regex", "spam")
