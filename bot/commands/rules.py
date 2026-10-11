@@ -52,7 +52,7 @@ class RulesPanelView(discord.ui.View):
         return True
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item):
-        self.cog.bot.log.exception("rules panel button failed", exc_info=error)
+        self.cog.bot.log.error("rules panel button failed: %r", error, exc_info=(type(error), error, error.__traceback__))
         if interaction.response.is_done():
             await interaction.followup.send(
                 "The role toggle failed. Check the bot's role permissions.", ephemeral=True
@@ -198,6 +198,10 @@ class Rules(commands.Cog):
             except (discord.NotFound, discord.Forbidden):
                 message = None
         if message is None:
+            # A deleted panel cannot retain its old uploaded attachment; do not
+            # publish a broken attachment:// reference on a replacement message.
+            if panel.get("image_filename") and upload is None:
+                panel["image_filename"] = None
             if upload is not None:
                 sent = await channel.send(embed=embed, view=view, file=upload, allowed_mentions=discord.AllowedMentions.none())
             else:
@@ -431,10 +435,11 @@ class Rules(commands.Cog):
             return await interaction.response.send_message(f"This server's upload limit is {interaction.guild.filesize_limit // (1024 * 1024)} MB.", ephemeral=True)
         try:
             data = await attachment.read()
+            filename = "rules-image" + suffix
             panel["image_url"] = None
-            panel["image_filename"] = attachment.filename
+            panel["image_filename"] = filename
             await self._save_panel(interaction.guild_id, panel)
-            await self._sync_panel(interaction.guild, panel, upload=discord.File(BytesIO(data), filename=attachment.filename))
+            await self._sync_panel(interaction.guild, panel, upload=discord.File(BytesIO(data), filename=filename))
             await self._save_panel(interaction.guild_id, panel)
             await interaction.response.send_message("Image/GIF attached and the panel updated.", ephemeral=True)
         except Exception as exc:
