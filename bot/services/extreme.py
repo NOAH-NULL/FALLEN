@@ -208,6 +208,30 @@ class ExtremeService:
                 raise ValueError('Domain rules require a valid hostname')
             pattern = host.rstrip('.').lower()
         async with self.db.session() as s:
+            existing_result = await s.execute(
+                select(AutoModRule).where(
+                    AutoModRule.guild_id == guild_id,
+                    AutoModRule.name == name,
+                )
+            )
+            existing = existing_result.scalar_one_or_none()
+            if existing is None:
+                total_result = await s.execute(
+                    select(func.count(AutoModRule.id)).where(
+                        AutoModRule.guild_id == guild_id
+                    )
+                )
+                if int(total_result.scalar_one() or 0) >= 100:
+                    raise ValueError("A server can have at most 100 AutoMod rules")
+            if kind == "regex" and (existing is None or existing.kind != "regex"):
+                regex_result = await s.execute(
+                    select(func.count(AutoModRule.id)).where(
+                        AutoModRule.guild_id == guild_id,
+                        AutoModRule.kind == "regex",
+                    )
+                )
+                if int(regex_result.scalar_one() or 0) >= 50:
+                    raise ValueError("A server can have at most 50 regex rules")
             stmt=pg_insert(AutoModRule).values(
                 guild_id=guild_id,
                 name=name,
