@@ -30,7 +30,6 @@ SAFE_ACTIONS = {
     'blush': ('blush', '😊', 'blushed at', 'blushed back at'),
     'kill': ('punch', '💀', 'cartoonishly defeated', 'retaliated against'),
     'wreck': ('punch', '💥', 'absolutely wrecked', 'wrecked back'),
-    'fuck': ('fuck', '🥴', 'fucked', 'fucked back'),
     'kiss': ('kiss', '💋', 'kissed affectionately', 'kissed back'),
     'flirt': ('flirt', '🫦', 'flirted with', 'flirted back with'),
 }
