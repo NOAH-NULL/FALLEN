@@ -93,20 +93,30 @@ class Bot(commands.AutoShardedBot):
         if not guild:
             return 0
         existing = await self.extreme.snapshot_get(guild_id, "__lockdown__")
-        if not existing:
-            # Preserve the complete @everyone overwrite, not only send_messages.
-            # set_permissions(..., send_messages=False) can replace the whole
-            # overwrite and silently erase unrelated channel permissions.
-            state = {}
-            for channel in self._lockdown_channels(guild):
-                overwrite = channel.overwrites_for(guild.default_role)
-                allow, deny = overwrite.pair()
-                state[str(channel.id)] = {"allow": allow.value, "deny": deny.value}
+        # Preserve the original baseline for channels already locked, while
+        # adding newly created/recreated channels so a later unlock can restore
+        # them too. Never replace an existing channel's baseline with its
+        # already-locked permissions.
+        previous_payload = existing.payload if existing and isinstance(existing.payload, dict) else {}
+        state = dict(previous_payload.get("channels", {}))
+        added_channel = False
+        for channel in self._lockdown_channels(guild):
+            channel_key = str(channel.id)
+            if channel_key in state:
+                continue
+            overwrite = channel.overwrites_for(guild.default_role)
+            allow, deny = overwrite.pair()
+            state[channel_key] = {"allow": allow.value, "deny": deny.value}
+            added_channel = True
+        if existing is None or added_channel:
             await self.extreme.snapshot_save(
                 guild_id,
                 guild.me.id if guild.me else 0,
                 "__lockdown__",
-                {"channels": state, "created_at": discord.utils.utcnow().isoformat()},
+                {
+                    "channels": state,
+                    "created_at": previous_payload.get("created_at") or discord.utils.utcnow().isoformat(),
+                },
             )
         changed = 0
         for channel in self._lockdown_channels(guild):
