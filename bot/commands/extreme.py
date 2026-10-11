@@ -75,11 +75,16 @@ class Extreme(commands.Cog):
     async def restore(self, ctx, name: str = 'default'):
         row=await self.bot.extreme.snapshot_get(ctx.guild.id,name)
         if not row: return await ctx.send(f'❌ Snapshot `{name}` does not exist.')
-        features=row.payload.get('features',{})
-        for key, value in features.items():
-            if key in IMPLEMENTED_FEATURES:
-                await self.bot.extreme.set(ctx.guild.id, key, bool(value))
-        await ctx.send(f'✅ Restored `{name}`.')
+        features = row.payload.get('features', {})
+        try:
+            result = await self.bot.extreme.restore_features(ctx.guild.id, features)
+        except ValueError as exc:
+            return await ctx.send(f'❌ {exc}')
+        skipped = result['skipped']
+        detail = f" Restored {result['restored']} supported feature(s)."
+        if skipped:
+            detail += f" Skipped {len(skipped)} unsupported or malformed feature(s)."
+        await ctx.send(f'✅ Restored `{name}`.' + detail)
 
     @v16.command(name='security-log', description='Show the recent security timeline')
     @commands.has_guild_permissions(manage_guild=True)
