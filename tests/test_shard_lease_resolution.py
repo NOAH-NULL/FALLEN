@@ -29,3 +29,8 @@ def test_invalid_explicit_shard_ids_are_rejected(ids):
 def test_invalid_shard_counts_are_rejected(count):
     with pytest.raises(ValueError):
         resolve_shard_ids(None, configured_count=count)
+
+
+def test_explicit_shard_ids_must_fit_configured_count():
+    with pytest.raises(ValueError, match="smaller than SHARD_COUNT"):
+        resolve_shard_ids([4], configured_count=4)
