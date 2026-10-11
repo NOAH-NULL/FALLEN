@@ -74,6 +74,20 @@ class Bot(commands.AutoShardedBot):
         for ext in EXTENSIONS: await self.load_extension(ext)
         if self.settings.guild_id: g=discord.Object(id=self.settings.guild_id); self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
         else: await self.tree.sync()
+    @staticmethod
+    def _lockdown_channels(guild):
+        # Forum/media channels and threads can still accept posts if only
+        # ordinary text channels are locked. Parent-channel thread permissions
+        # are handled through send_messages_in_threads below.
+        channels = list(guild.text_channels)
+        known_ids = {channel.id for channel in channels}
+        for attr in ("forums", "media_channels"):
+            for channel in getattr(guild, attr, []):
+                if channel.id not in known_ids:
+                    channels.append(channel)
+                    known_ids.add(channel.id)
+        return channels
+
     async def security_lockdown(self, guild_id: int, reason: str = "V16 lockdown"):
         guild = self.get_guild(guild_id)
         if not guild:
@@ -84,7 +98,7 @@ class Bot(commands.AutoShardedBot):
             # set_permissions(..., send_messages=False) can replace the whole
             # overwrite and silently erase unrelated channel permissions.
             state = {}
-            for channel in guild.text_channels:
+            for channel in self._lockdown_channels(guild):
                 overwrite = channel.overwrites_for(guild.default_role)
                 allow, deny = overwrite.pair()
                 state[str(channel.id)] = {"allow": allow.value, "deny": deny.value}
@@ -95,10 +109,11 @@ class Bot(commands.AutoShardedBot):
                 {"channels": state, "created_at": discord.utils.utcnow().isoformat()},
             )
         changed = 0
-        for channel in guild.text_channels:
+        for channel in self._lockdown_channels(guild):
             try:
                 overwrite = channel.overwrites_for(guild.default_role)
                 overwrite.send_messages = False
+                overwrite.send_messages_in_threads = False
                 await channel.set_permissions(
                     guild.default_role, overwrite=overwrite, reason=reason[:512]
                 )
@@ -116,7 +131,7 @@ class Bot(commands.AutoShardedBot):
         state = snapshot.payload.get("channels", {}) if snapshot else {}
         changed = 0
         failed = False
-        for channel in guild.text_channels:
+        for channel in self._lockdown_channels(guild):
             if str(channel.id) not in state:
                 continue
             try:
