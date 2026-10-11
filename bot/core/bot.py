@@ -354,6 +354,12 @@ class Bot(commands.AutoShardedBot):
                     baseline = candidate
         except Exception:
             log.exception("security baseline lookup failed guild=%s target=%s", guild.id, getattr(resource, "id", None))
+        if getattr(self, "extreme", None) is not None and not baseline:
+            log.error(
+                "resource recovery skipped because no trusted baseline entry exists guild=%s target=%s",
+                guild.id, getattr(resource, "id", None),
+            )
+            return None
         saved_name = baseline.get("name", resource.name)
         saved_position = baseline.get("position", resource.position)
         saved_overwrites = getattr(resource, "overwrites", {})
