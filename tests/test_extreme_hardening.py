@@ -8,7 +8,7 @@ import discord
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from bot.models import Playlist
+from bot.models import Playlist, Ticket
 from bot.services.extreme import IMPLEMENTED_FEATURES, ExtremeService
 from bot.services.platform import PlatformService
 from bot.services.automod import AutoModService
@@ -242,3 +242,34 @@ async def test_heat_configuration_rejects_non_finite_values():
     service = AutoModService(cache=None)
     with pytest.raises(ValueError, match="decay must be finite"):
         await service.configure_heat(1, decay=float("nan"))
+
+
+
+class TicketSession(FakeSession):
+    def __init__(self):
+        super().__init__()
+        self.statements = []
+
+    async def execute(self, statement):
+        self.statements.append(statement)
+        self.statement = statement
+        return FakeResult()
+
+
+class TicketDB(FakeDB):
+    def __init__(self):
+        self.session_obj = TicketSession()
+
+
+@pytest.mark.asyncio
+async def test_ticket_creation_is_idempotent_per_channel():
+    db = TicketDB()
+    service = ExtremeService(db)
+
+    await service.ticket_create(1, 99, 2)
+
+    insert_sql = str(db.session_obj.statements[0].compile(dialect=postgresql.dialect()))
+    assert "ON CONFLICT (channel_id) DO NOTHING" in insert_sql
+    assert "INSERT INTO tickets" in insert_sql
+    assert len(db.session_obj.statements) == 2
+    assert "SELECT" in str(db.session_obj.statements[1].compile(dialect=postgresql.dialect()))
