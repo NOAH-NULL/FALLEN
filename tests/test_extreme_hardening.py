@@ -11,6 +11,7 @@ from sqlalchemy.dialects import postgresql
 from bot.models import Playlist
 from bot.services.extreme import IMPLEMENTED_FEATURES, ExtremeService
 from bot.services.platform import PlatformService
+from bot.services.automod import AutoModService
 
 
 class FakeResult:
@@ -225,3 +226,19 @@ async def test_snapshot_restore_is_atomic_and_skips_unsupported_flags():
     }
     assert result["restored"] == 2
     assert set(result["skipped"]) == {"anti_bot_join", "unknown_flag"}
+
+
+@pytest.mark.asyncio
+async def test_heat_configuration_is_bounded():
+    service = AutoModService(cache=None)
+    config = await service.configure_heat(1, decay=99, ttl=99999999, spam=1e100)
+    assert config["decay"] == 1.0
+    assert config["ttl"] == 2592000
+    assert config["spam"] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_heat_configuration_rejects_non_finite_values():
+    service = AutoModService(cache=None)
+    with pytest.raises(ValueError, match="decay must be finite"):
+        await service.configure_heat(1, decay=float("nan"))
