@@ -131,7 +131,7 @@ class Rules(commands.Cog):
     async def _reply(self, interaction: discord.Interaction, content, **kwargs):
         if interaction.response.is_done():
             return await interaction.followup.send(content, **kwargs)
-        return await self._reply(interaction,content, **kwargs)
+        return await interaction.response.send_message(content, **kwargs)
 
     async def _panel(self, guild_id: int) -> dict | None:
         settings = await self.bot.welcome_engine.get(guild_id)
