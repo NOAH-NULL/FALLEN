@@ -199,6 +199,7 @@ class GreetingWorker:
         force_channel=None,
         invite_id=None,
         invite_uses=0,
+        test_mode=False,
     ):
         if kind not in ("welcome", "goodbye"):
             raise ValueError("Unknown greeting kind.")
@@ -230,7 +231,9 @@ class GreetingWorker:
         public_enabled = kind == "goodbye" or bool(settings.get("public_enabled", True))
         if force_channel is not None:
             public_enabled = True
-        dm_enabled = kind == "welcome" and bool(settings.get("dm_enabled"))
+        # Test commands should only exercise the public greeting pipeline;
+        # they must not grant roles, emit security alerts, or DM the tester.
+        dm_enabled = kind == "welcome" and bool(settings.get("dm_enabled")) and not test_mode
 
         channel = force_channel
         if channel is None and public_enabled:
@@ -319,7 +322,7 @@ class GreetingWorker:
 
         # Auto-role belongs to the welcome transaction and is attempted after
         # successful public delivery so a broken role never blocks the greeting.
-        if kind == "welcome":
+        if kind == "welcome" and not test_mode:
             await self.bot.welcome_engine.apply_roles(member, settings)
             await self.bot.welcome_engine.alert(member, settings, risk, kind)
 
