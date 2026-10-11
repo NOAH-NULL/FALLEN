@@ -52,7 +52,11 @@ class FakeGuild:
 
 
 def fake_bot(guild, extreme):
-    return SimpleNamespace(get_guild=lambda _guild_id: guild, extreme=extreme)
+    return SimpleNamespace(
+        get_guild=lambda _guild_id: guild,
+        extreme=extreme,
+        _lockdown_channels=Bot._lockdown_channels,
+    )
 
 
 @pytest.mark.asyncio
