@@ -10,6 +10,7 @@ from PIL import Image
 
 from bot.commands.greeting import Greeting
 from bot.commands.text import TextCommands
+from bot.commands.greeting_prefix import GreetingPrefix
 from bot.services.guild_config import GuildConfigService
 from bot.services.greeting import GreetingRenderer
 
@@ -30,9 +31,11 @@ def make_animated_gif():
 
 def test_prefix_greeting_alias_is_on_text_surface_only():
     greeting_source = __import__('pathlib').Path('bot/commands/greeting.py').read_text()
+    prefix_source = __import__('pathlib').Path('bot/commands/greeting_prefix.py').read_text()
     text_source = __import__('pathlib').Path('bot/commands/text.py').read_text()
     assert "name='greet'" not in greeting_source
-    assert "name='greeting', aliases=['greet']" in text_source
+    assert "name='greeting', aliases=['greet']" in prefix_source
+    assert "name='greeting', aliases=['greet']" not in text_source
 
 
 def test_greeting_embed_defaults_are_enabled_and_have_placeholders():
@@ -131,13 +134,13 @@ async def test_prefix_banner_upload_saves_gif_bytes():
     data = make_gif()
     attachment = SimpleNamespace(content_type='image/gif', read=AsyncMock(return_value=data))
     config = SimpleNamespace(update=AsyncMock())
-    cog = TextCommands(SimpleNamespace(guild_config=config, greetings=GreetingRenderer()))
+    cog = GreetingPrefix(SimpleNamespace(guild_config=config, greetings=GreetingRenderer()))
     ctx = SimpleNamespace(
         guild=SimpleNamespace(id=42),
         send=AsyncMock(),
     )
 
-    await TextCommands.greeting_banner.callback(cog, ctx, 'goodbye', attachment)
+    await GreetingPrefix.greeting_banner.callback(cog, ctx, 'goodbye', attachment)
 
     config.update.assert_awaited_once_with(
         42,
@@ -149,12 +152,12 @@ async def test_prefix_banner_upload_saves_gif_bytes():
 @pytest.mark.asyncio
 async def test_prefix_greeting_message_is_saved():
     config = SimpleNamespace(update=AsyncMock())
-    cog = TextCommands(SimpleNamespace(guild_config=config))
+    cog = GreetingPrefix(SimpleNamespace(guild_config=config))
     ctx = SimpleNamespace(
         guild=SimpleNamespace(id=42),
         send=AsyncMock(),
     )
 
-    await TextCommands.greeting_message.callback(cog, ctx, 'goodbye', message='See you, {name}!')
+    await GreetingPrefix.greeting_message.callback(cog, ctx, 'goodbye', message='See you, {name}!')
 
     config.update.assert_awaited_once_with(42, goodbye_message='See you, {name}!')
