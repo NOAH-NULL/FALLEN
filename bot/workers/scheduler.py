@@ -25,7 +25,15 @@ class Scheduler:
                             log.exception('reminder channel lookup failed id=%s; will retry', r.id)
                             continue
                     try:
-                        await ch.send(f'⏰ <@{r.user_id}> {r.message}')
+                        await ch.send(
+                            f'⏰ <@{r.user_id}> {r.message}',
+                            allowed_mentions=discord.AllowedMentions(
+                                users=[discord.Object(id=r.user_id)],
+                                roles=False,
+                                everyone=False,
+                                replied_user=False,
+                            ),
+                        )
                         await self.bot.platform.complete_reminder(r.id)
                     except discord.NotFound:
                         await self.bot.platform.complete_reminder(r.id)
