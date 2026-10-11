@@ -3,6 +3,8 @@ from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import re
 import time
+from urllib.parse import urlparse
+import regex as safe_regex
 from sqlalchemy import delete, select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import GuildConfig, FeatureRecord, SecurityEvent, ScheduledAction, AutoModRule, MemberProfile, Reputation, Playlist, Ticket, ConfigSnapshot
@@ -137,6 +139,29 @@ class ExtremeService:
             await s.commit()
             return True
     async def upsert_automod_rule(self,guild_id,name,kind,pattern='',action='delete',config=None,enabled=True):
+        name = str(name).strip()
+        kind = str(kind).strip().lower()
+        action = str(action).strip().lower()
+        pattern = str(pattern or '').strip()
+        if not name or len(name) > 64:
+            raise ValueError('Rule name must contain 1–64 characters')
+        if kind not in {'regex', 'domain_blacklist', 'domain_whitelist'}:
+            raise ValueError('Unsupported AutoMod rule kind')
+        if action not in {'delete', 'warn', 'log'}:
+            raise ValueError('Action must be delete, warn, or log')
+        if not pattern or len(pattern) > 1000:
+            raise ValueError('Rule pattern must contain 1–1000 characters')
+        if kind == 'regex':
+            try:
+                safe_regex.compile(pattern)
+            except safe_regex.error as exc:
+                raise ValueError(f'Invalid regular expression: {exc}') from exc
+        else:
+            parsed = urlparse(pattern if '://' in pattern else '//' + pattern)
+            host = parsed.hostname
+            if not host:
+                raise ValueError('Domain rules require a valid hostname')
+            pattern = host.rstrip('.').lower()
         async with self.db.session() as s:
             stmt=pg_insert(AutoModRule).values(
                 guild_id=guild_id,
