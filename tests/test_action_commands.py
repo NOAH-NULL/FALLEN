@@ -109,7 +109,7 @@ async def test_gif_service_aliases_and_free_provider():
         assert await service.get(action) == "https://example.com/action.gif"
 
     reactions = [params["reaction"] for url, params in session.calls if url == service.OTAKU_GIFS_URL]
-    assert reactions == ["hug", "wave", "punch", "poke"]
+    assert reactions == ["hug", "wave", "punch", "poke", "hug"]
 
 
 @pytest.mark.asyncio
@@ -131,6 +131,7 @@ async def test_configured_giphy_provider_is_used():
         "limit": 15,
         "rating": "pg",
     }]
+    assert "otakugifs" in service._provider_backoff
 
 
 @pytest.mark.asyncio
