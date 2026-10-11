@@ -56,3 +56,26 @@ async def test_unsupported_channel_type_is_not_misrepresented_as_text():
 
     assert restored_id is None
     guild.create_text_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_recovery_skips_recreation_when_trusted_baseline_is_missing():
+    resource = MagicMock(spec=discord.VoiceChannel)
+    resource.id = 12
+    resource.name = "untrusted-name"
+    resource.category_id = None
+    resource.position = 4
+    resource.overwrites = {}
+
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.return_value = None
+    guild.create_voice_channel = AsyncMock()
+
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=None))
+    restored_id = await Bot.restore_deleted_resource(
+        SimpleNamespace(extreme=extreme), guild, resource, "channel_delete"
+    )
+
+    assert restored_id is None
+    guild.create_voice_channel.assert_not_awaited()
