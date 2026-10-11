@@ -55,7 +55,7 @@ class Bot(commands.AutoShardedBot):
         self.gateway_queue=GatewayEventQueue(settings.gateway_queue_size, settings.gateway_critical_queue_size); self.gateway_workers=GatewayWorkerPool(self,self.gateway_queue,settings.gateway_workers,settings.gateway_guild_concurrency,settings.gateway_max_event_age,settings.gateway_dlq_maxsize)
         self.shard_leases=ShardLeaseManager(self.cache, settings.instance_id, settings.shard_lease_ttl_ms); self.shard_leases.bind_shutdown(self.close); self.db.set_fence_guard(self.shard_leases.validate_fence)
         self._xp_cooldown={}; self._xp_cap=200000; self.health_runner=None
-        self._destructive_actions = defaultdict(deque)
+        self._destructive_actions = defaultdict(deque); self._last_destructive_prune = 0.0
     async def setup_hook(self):
         setup_telemetry(self.settings); start_metrics(self.settings.metrics_host,self.settings.metrics_port); self.health_runner=await start_health_server(self,self.settings.metrics_host,self.settings.health_port)
         recommended_shard_count = None
@@ -403,10 +403,23 @@ class Bot(commands.AutoShardedBot):
             )
         return None
 
+    def _prune_destructive_actions(self, now: float):
+        # One entry is created per guild/actor/action tuple. Prune idle tuples
+        # periodically so a long-running bot does not retain every past actor.
+        if now - self._last_destructive_prune < 60:
+            return
+        self._last_destructive_prune = now
+        for key, events in list(self._destructive_actions.items()):
+            while events and now - events[0] > 12:
+                events.popleft()
+            if not events:
+                self._destructive_actions.pop(key, None)
+
     async def _observe_destructive_action(self, guild, actor_id: int | None, action: str, target_id: int | None = None, resource=None):
         if actor_id is None or not guild:
             return
         now = asyncio.get_running_loop().time()
+        self._prune_destructive_actions(now)
         key = (guild.id, actor_id, action)
         q = self._destructive_actions[key]
         q.append(now)
@@ -423,7 +436,7 @@ class Bot(commands.AutoShardedBot):
                 await self.restore_deleted_resource(guild, resource, action) if resource else None
                 await self.restore_security_state(guild)
                 await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
-                q.clear()
+                self._destructive_actions.pop(key, None)
 
     async def _audit_actor_for(self, guild, action, target_id):
         # Audit-log entries can lag the gateway event by a short interval.
