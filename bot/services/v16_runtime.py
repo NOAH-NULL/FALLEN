@@ -2,6 +2,7 @@ from __future__ import annotations
 import re, time
 from collections import defaultdict, deque
 from urllib.parse import urlparse
+import regex as safe_regex
 
 
 class V16Runtime:
@@ -91,11 +92,8 @@ class V16Runtime:
         self._trim(cq, now, 12)
 
         settings = await self.bot.extreme.get(gid)
-        rules = await self.bot.extreme.automod_rules(gid)
         reasons = []
         content = message.content or ""
-        # Bound regex work so a malicious rule cannot monopolize a worker.
-        regex_rules = [r for r in rules if r.enabled and r.kind == 'regex']
 
         if settings.get('flood_detection') and len(q) > 6:
             reasons.append('flood')
@@ -107,24 +105,66 @@ class V16Runtime:
         if settings.get('mention_spam') and len(message.mentions) + len(message.role_mentions) >= 8:
             reasons.append('mention_spam')
 
-        urls = re.findall(r'https?://[^\s>]+', content)
-        if urls and (settings.get('domain_blacklist') or settings.get('domain_whitelist')):
-            blocked = {r.pattern.lower() for r in rules if r.enabled and r.kind == 'domain_blacklist'}
-            allowed = {r.pattern.lower() for r in rules if r.enabled and r.kind == 'domain_whitelist'}
+        return list(dict.fromkeys(reasons))
+
+    async def custom_rule_matches(self, message):
+        """Return matched custom rules with their configured actions.
+
+        Regex execution is time-limited; a pathological administrator-supplied
+        expression must not monopolize a gateway worker.
+        """
+        gid = message.guild.id
+        content = message.content or ""
+        settings = await self.bot.extreme.get(gid)
+        rules = await self.bot.extreme.automod_rules(gid)
+        matches = []
+
+        if settings.get('domain_blacklist') or settings.get('domain_whitelist'):
+            urls = re.findall(r'https?://[^\s>]+', content)
+            blocked_rules = [
+                rule for rule in rules
+                if rule.enabled and rule.kind == 'domain_blacklist'
+                and settings.get('domain_blacklist')
+            ]
+            whitelist_rules = [
+                rule for rule in rules
+                if rule.enabled and rule.kind == 'domain_whitelist'
+                and settings.get('domain_whitelist')
+            ]
             for raw in urls:
-                host = (urlparse(raw).hostname or '').lower()
-                if host and any(host == d or host.endswith('.' + d) for d in blocked):
-                    reasons.append('domain_blacklist')
-                if allowed and not any(host == d or host.endswith('.' + d) for d in allowed):
-                    reasons.append('domain_whitelist')
+                host = (urlparse(raw).hostname or '').rstrip('.').lower()
+                if not host:
+                    continue
+                for rule in blocked_rules:
+                    domain = rule.pattern.rstrip('.').lower()
+                    if host == domain or host.endswith('.' + domain):
+                        matches.append((rule, f'domain_blacklist:{rule.name}'))
+                if whitelist_rules and not any(
+                    host == rule.pattern.rstrip('.').lower()
+                    or host.endswith('.' + rule.pattern.rstrip('.').lower())
+                    for rule in whitelist_rules
+                ):
+                    # A whitelist miss is one policy violation; choose the
+                    # strongest configured action so rule ordering cannot
+                    # accidentally weaken enforcement.
+                    severity = {'log': 0, 'warn': 1, 'delete': 2}
+                    policy = max(whitelist_rules, key=lambda rule: severity.get(rule.action, 0))
+                    matches.append((policy, f'domain_whitelist:{policy.name}'))
 
         if settings.get('regex_rules'):
-            for rule in regex_rules[:50]:
+            for rule in [
+                item for item in rules if item.enabled and item.kind == 'regex'
+            ][:50]:
                 try:
-                    if re.search(rule.pattern, content, re.I):
-                        reasons.append('regex:' + rule.name)
-                except re.error:
-                    # A malformed rule must not break message processing.
+                    matched = safe_regex.search(
+                        rule.pattern,
+                        content,
+                        flags=safe_regex.IGNORECASE,
+                        timeout=0.025,
+                    )
+                except (safe_regex.error, TimeoutError):
                     continue
+                if matched:
+                    matches.append((rule, f'regex:{rule.name}'))
 
-        return list(dict.fromkeys(reasons))
+        return matches
