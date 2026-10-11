@@ -22,3 +22,8 @@ def test_anti_nuke_burst_detection_is_wired_to_destructive_events():
     assert 'on_guild_role_delete' in source
     assert 'anti_channel_delete' in source
     assert 'anti_role_delete' in source
+
+
+def test_lockdown_includes_voice_and_stage_text_chats():
+    source = Path("bot/core/bot.py").read_text()
+    assert '("voice_channels", "stage_channels", "forums", "media_channels")' in source
