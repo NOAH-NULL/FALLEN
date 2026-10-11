@@ -187,9 +187,24 @@ class Bot(commands.AutoShardedBot):
 
     async def snapshot_security_state(self, guild, created_by=0, name="__security_state__"):
         payload = {
-            "channels": {str(ch.id): {"name": ch.name, "position": ch.position,
-                "overwrites": {str(target.id): {"allow": ow.pair()[0].value, "deny": ow.pair()[1].value}
-                    for target, ow in ch.overwrites.items()}} for ch in guild.channels},
+            "channels": {str(ch.id): {
+                "name": ch.name,
+                "position": ch.position,
+                "category_id": getattr(ch, "category_id", None),
+                "topic": getattr(ch, "topic", None),
+                "nsfw": getattr(ch, "nsfw", None),
+                "slowmode_delay": getattr(ch, "slowmode_delay", None),
+                "bitrate": getattr(ch, "bitrate", None),
+                "user_limit": getattr(ch, "user_limit", None),
+                "rtc_region": getattr(getattr(ch, "rtc_region", None), "value", None),
+                "overwrites": {
+                    str(target.id): {
+                        "allow": ow.pair()[0].value,
+                        "deny": ow.pair()[1].value,
+                    }
+                    for target, ow in ch.overwrites.items()
+                },
+            } for ch in guild.channels},
             "roles": {str(role.id): {"name": role.name, "position": role.position, "permissions": role.permissions.value,
                 "colour": role.colour.value, "hoist": role.hoist, "mentionable": role.mentionable}
                 for role in guild.roles if not role.is_default()},
@@ -360,8 +375,13 @@ class Bot(commands.AutoShardedBot):
                 guild.id, getattr(resource, "id", None),
             )
             return None
+        # Prefer the last trusted baseline for mutable metadata. The deleted
+        # event object can contain attacker-modified properties (for example,
+        # a renamed channel deleted immediately afterward).
         saved_name = baseline.get("name", resource.name)
         saved_position = baseline.get("position", resource.position)
+        saved_category_id = baseline.get("category_id", getattr(resource, "category_id", None))
+        saved_category = guild.get_channel(saved_category_id) if saved_category_id else None
         saved_overwrites = getattr(resource, "overwrites", {})
         if action == "channel_delete" and isinstance(baseline.get("overwrites"), dict):
             saved_overwrites = {}
@@ -386,29 +406,27 @@ class Bot(commands.AutoShardedBot):
                 return created.id
 
             if action == 'channel_delete' and isinstance(resource, discord.StageChannel):
-                category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_stage_channel(
                     saved_name,
-                    category=category,
+                    category=saved_category,
                     position=saved_position,
                     overwrites=saved_overwrites,
-                    bitrate=resource.bitrate,
-                    user_limit=resource.user_limit,
-                    rtc_region=resource.rtc_region,
+                    bitrate=baseline.get("bitrate", resource.bitrate),
+                    user_limit=baseline.get("user_limit", resource.user_limit),
+                    rtc_region=baseline.get("rtc_region", resource.rtc_region),
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
 
             if action == 'channel_delete' and isinstance(resource, discord.VoiceChannel):
-                category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_voice_channel(
                     saved_name,
-                    category=category,
+                    category=saved_category,
                     position=saved_position,
                     overwrites=saved_overwrites,
-                    bitrate=resource.bitrate,
-                    user_limit=resource.user_limit,
-                    rtc_region=resource.rtc_region,
+                    bitrate=baseline.get("bitrate", resource.bitrate),
+                    user_limit=baseline.get("user_limit", resource.user_limit),
+                    rtc_region=baseline.get("rtc_region", resource.rtc_region),
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
@@ -423,14 +441,13 @@ class Bot(commands.AutoShardedBot):
                         resource.id,
                     )
                     return None
-                category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_text_channel(
                     saved_name,
-                    category=category,
-                    topic=resource.topic,
+                    category=saved_category,
+                    topic=baseline.get("topic", resource.topic),
                     position=saved_position,
-                    nsfw=resource.nsfw,
-                    slowmode_delay=resource.slowmode_delay,
+                    nsfw=baseline.get("nsfw", resource.nsfw),
+                    slowmode_delay=baseline.get("slowmode_delay", resource.slowmode_delay),
                     overwrites=saved_overwrites,
                     reason='Fallen anti-nuke restoration',
                 )
