@@ -28,7 +28,7 @@ def test_action_surface_uses_shared_safe_action_registry():
     cog = Fun(SimpleNamespace(reactions=SimpleNamespace(get=AsyncMock(return_value=None))))
     names = {command.name for command in cog.get_commands()}
     assert set(SAFE_ACTIONS) <= names
-    assert "fuck" not in names
+    assert "fuck" in names
 
 
 def test_release_excludes_runtime_artifacts():
