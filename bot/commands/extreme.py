@@ -86,6 +86,18 @@ class Extreme(commands.Cog):
             detail += f" Skipped {len(skipped)} unsupported or malformed feature(s)."
         await ctx.send(f'✅ Restored `{name}`.' + detail)
 
+    @v16.command(
+        name='security-backup',
+        description='Refresh the trusted channel and role recovery baseline',
+    )
+    @commands.has_guild_permissions(administrator=True)
+    async def security_backup(self, ctx):
+        await self.bot.snapshot_security_state(ctx.guild, ctx.author.id)
+        await ctx.send(
+            '✅ Security recovery baseline refreshed from the current server state. '
+            'Only run this when the server configuration is trusted; this replaces the previous baseline.'
+        )
+
     @v16.command(name='security-log', description='Show the recent security timeline')
     @commands.has_guild_permissions(manage_guild=True)
     async def security_log(self, ctx, limit: int = 15):
