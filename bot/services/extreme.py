@@ -250,10 +250,10 @@ class ExtremeService:
             stmt=pg_insert(Reputation).values(
                 guild_id=guild_id,
                 user_id=user_id,
-                score=max(-100000, delta),
+                score=max(-100000, min(100000, delta)),
             ).on_conflict_do_update(
                 index_elements=['guild_id', 'user_id'],
-                set_={'score': func.greatest(Reputation.score + delta, -100000)},
+                set_={'score': func.least(func.greatest(Reputation.score + delta, -100000), 100000)},
             ).returning(Reputation.score)
             result=await s.execute(stmt)
             score=result.scalar_one()
