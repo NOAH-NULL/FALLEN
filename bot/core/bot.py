@@ -82,9 +82,58 @@ class Bot(commands.AutoShardedBot):
         )
         await self.shard_leases.acquire(shard_ids)
         await self.music.start(); await self.greetings.start(); await self.reactions.start(); await self.greeting_worker.start(); await self.invites.start(); await self.gateway_workers.start(); await self.invalidation.start(); await self.scheduler.start(); await self.dashboard.start()
-        for ext in EXTENSIONS: await self.load_extension(ext)
-        if self.settings.guild_id: g=discord.Object(id=self.settings.guild_id); self.tree.copy_global_to(guild=g); await self.tree.sync(guild=g)
-        else: await self.tree.sync()
+        for ext in EXTENSIONS:
+            await self.load_extension(ext)
+            log.info("loaded command extension=%s", ext)
+
+        # Fail loudly in logs if a cog or subcommand was not registered locally.
+        rules_group = self.tree.get_command("rules")
+        expected_rules = {
+            "setup", "add", "edit", "remove", "button", "publish",
+            "edit-panel", "image", "image-url", "remove-image", "status",
+        }
+        local_rules = {
+            command.name for command in getattr(rules_group, "commands", [])
+        }
+        missing_local = expected_rules - local_rules
+        if rules_group is None or missing_local:
+            log.error(
+                "rules command registration incomplete group_present=%s missing=%s",
+                rules_group is not None,
+                sorted(missing_local),
+            )
+        else:
+            log.info("registered /rules subcommands=%s", sorted(local_rules))
+
+        if self.settings.guild_id:
+            guild = discord.Object(id=self.settings.guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            sync_scope = f"guild:{self.settings.guild_id}"
+        else:
+            synced = await self.tree.sync()
+            sync_scope = "global"
+
+        remote_rules = next((command for command in synced if command.name == "rules"), None)
+        remote_options = {
+            option.name for option in getattr(remote_rules, "options", [])
+        }
+        missing_remote = expected_rules - remote_options
+        if remote_rules is None or missing_remote:
+            log.error(
+                "Discord command sync returned incomplete /rules group scope=%s "
+                "group_present=%s missing_subcommands=%s synced_roots=%s",
+                sync_scope,
+                remote_rules is not None,
+                sorted(missing_remote),
+                sorted(command.name for command in synced),
+            )
+        else:
+            log.info(
+                "Discord command sync verified /rules scope=%s subcommands=%s",
+                sync_scope,
+                sorted(remote_options),
+            )
     @staticmethod
     def _lockdown_channels(guild):
         # Voice/stage channel text chats and forum/media posts must also be

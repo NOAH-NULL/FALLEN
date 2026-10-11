@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import wraps
 from io import BytesIO
 from pathlib import PurePath
 from urllib.parse import urlparse
@@ -16,6 +17,24 @@ DANGEROUS_ROLE_PERMISSIONS = (
     "manage_emojis_and_stickers", "manage_events", "manage_expressions",
     "manage_threads", "view_audit_log",
 )
+
+
+def _guard_rules_command(callback):
+    """Turn uncaught command-path failures into an ephemeral response, even after defer()."""
+    @wraps(callback)
+    async def guarded(self, interaction: discord.Interaction, *args, **kwargs):
+        try:
+            return await callback(self, interaction, *args, **kwargs)
+        except Exception as error:
+            try:
+                await self._report_error(interaction, error)
+            except Exception:
+                self.bot.log.error(
+                    "could not report rules command failure",
+                    exc_info=True,
+                )
+            return None
+    return guarded
 
 
 class RoleToggleButton(discord.ui.Button):
@@ -224,7 +243,7 @@ class Rules(commands.Cog):
         if message_id:
             try:
                 message = await channel.fetch_message(int(message_id))
-            except (discord.NotFound, discord.Forbidden):
+            except discord.NotFound:
                 message = None
         if message is None:
             # A deleted panel cannot retain its old uploaded attachment; do not
@@ -265,12 +284,20 @@ class Rules(commands.Cog):
         elif isinstance(error, discord.HTTPException):
             message = "Discord could not update the rules panel. Check channel permissions and try again."
         else:
-            self.bot.log.exception("rules panel operation failed", exc_info=error)
+            self.bot.log.error(
+                "rules panel operation failed",
+                exc_info=(type(error), error, error.__traceback__),
+            )
             message = "The rules panel operation failed. Check FALLEN's logs."
-        if interaction.response.is_done():
-            await interaction.followup.send("❌ " + message, ephemeral=True)
-        else:
-            await self._reply(interaction, "❌ " + message, ephemeral=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send("❌ " + message, ephemeral=True)
+            else:
+                await self._reply(interaction, "❌ " + message, ephemeral=True)
+        except discord.HTTPException:
+            self.bot.log.warning(
+                "could not deliver rules command error response", exc_info=True
+            )
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -290,6 +317,7 @@ class Rules(commands.Cog):
     @rules.command(name="setup", description="Create or reset your custom rules panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def setup_panel(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 256], description: app_commands.Range[str, 1, 3000], channel: discord.TextChannel):
         await interaction.response.defer(ephemeral=True)
         previous = await self._panel(interaction.guild_id)
@@ -336,6 +364,7 @@ class Rules(commands.Cog):
     @rules.command(name="add", description="Add a rule written by your administrators")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def add_rule(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 100], text: app_commands.Range[str, 1, 1000]):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -354,6 +383,7 @@ class Rules(commands.Cog):
     @rules.command(name="edit", description="Edit an existing rule by its number")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def edit_rule(self, interaction: discord.Interaction, number: app_commands.Range[int, 1, 1000], title: app_commands.Range[str, 1, 100] | None = None, text: app_commands.Range[str, 1, 1000] | None = None):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -380,6 +410,7 @@ class Rules(commands.Cog):
     @rules.command(name="remove", description="Remove a rule by its number")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def remove_rule(self, interaction: discord.Interaction, number: app_commands.Range[int, 1, 1000]):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -401,6 +432,7 @@ class Rules(commands.Cog):
     @rules.command(name="button", description="Configure one of the four role-access toggle buttons")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def configure_button(self, interaction: discord.Interaction, slot: app_commands.Range[int, 1, 4], label: app_commands.Range[str, 1, 80], role: discord.Role):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -436,6 +468,7 @@ class Rules(commands.Cog):
     @rules.command(name="publish", description="Publish or refresh the rules panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def publish_panel(self, interaction: discord.Interaction, channel: discord.TextChannel | None = None):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -454,6 +487,7 @@ class Rules(commands.Cog):
     @rules.command(name="edit-panel", description="Change the rules panel title or description")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def edit_panel(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 256] | None = None, description: app_commands.Range[str, 1, 3000] | None = None):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -477,6 +511,7 @@ class Rules(commands.Cog):
     @rules.command(name="image", description="Attach an image or GIF to the rules embed")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def set_image(self, interaction: discord.Interaction, attachment: discord.Attachment):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -504,6 +539,7 @@ class Rules(commands.Cog):
     @rules.command(name="image-url", description="Set the rules embed image using an HTTPS URL")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def set_image_url(self, interaction: discord.Interaction, url: app_commands.Range[str, 1, 1024]):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -525,6 +561,7 @@ class Rules(commands.Cog):
     @rules.command(name="remove-image", description="Remove the rules embed image")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def remove_image(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
@@ -543,6 +580,7 @@ class Rules(commands.Cog):
     @rules.command(name="status", description="Show the current rules panel configuration")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
+    @_guard_rules_command
     async def panel_status(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         panel = await self._panel(interaction.guild_id)

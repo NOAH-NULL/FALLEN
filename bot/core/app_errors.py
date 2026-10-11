@@ -26,7 +26,10 @@ async def handle_app_command_error(interaction: discord.Interaction, error: app_
                               app_commands.errors.CommandOnCooldown,
                               app_commands.errors.TransformerError,
                               app_commands.errors.CheckFailure)):
-        log.exception("application command failed", exc_info=original)
+        log.error(
+            "application command failed",
+            exc_info=(type(original), original, original.__traceback__),
+        )
     embed = discord.Embed(title="✕ Command failed", description=_message(error), colour=discord.Colour.red())
     embed.set_footer(text="Fallen • Try /help for command usage")
     try:
@@ -35,4 +38,6 @@ async def handle_app_command_error(interaction: discord.Interaction, error: app_
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
     except discord.HTTPException:
-        log.debug("could not send application command error response", exc_info=True)
+        log.warning("could not send application command error response", exc_info=True)
+    except Exception:
+        log.exception("unexpected failure while reporting application command error")
