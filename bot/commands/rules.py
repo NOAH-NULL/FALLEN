@@ -171,6 +171,24 @@ class Rules(commands.Cog):
         return embed
 
     @staticmethod
+    def _companion_embed(panel: dict) -> discord.Embed:
+        """Conventional bot-style helper embed displayed alongside the custom rules."""
+        embed = discord.Embed(
+            title="Rules & Access",
+            description=(
+                "Please read the rules in the panel above before participating.\n\n"
+                "**Role buttons**\n"
+                "Use the buttons below to add or remove the listed roles. "
+                "Some roles may unlock specific channels.\n\n"
+                "**Need help?**\n"
+                "Contact a server moderator if you have questions."
+            ),
+            colour=discord.Colour.blurple(),
+        )
+        embed.set_footer(text="FALLEN • Server information")
+        return embed
+
+    @staticmethod
     def _validate_panel(panel: dict) -> None:
         if not str(panel.get("title") or "").strip():
             raise ValueError("The rules panel title cannot be empty.")
@@ -199,7 +217,7 @@ class Rules(commands.Cog):
         if not perms.view_channel or not perms.send_messages or not perms.embed_links:
             raise ValueError("FALLEN needs View Channel, Send Messages, and Embed Links in the rules channel.")
         self._validate_panel(panel)
-        embed = self._embed(panel)
+        embeds = [self._embed(panel), self._companion_embed(panel)]
         view = self._view(guild.id, panel)
         message = None
         message_id = panel.get("message_id")
@@ -213,15 +231,15 @@ class Rules(commands.Cog):
             # publish a broken attachment:// reference on a replacement message.
             if panel.get("image_filename") and upload is None:
                 panel["image_filename"] = None
-                embed = self._embed(panel)
+                embeds = [self._embed(panel), self._companion_embed(panel)]
             if upload is not None:
-                sent = await channel.send(embed=embed, view=view, file=upload, allowed_mentions=discord.AllowedMentions.none())
+                sent = await channel.send(embeds=embeds, view=view, file=upload, allowed_mentions=discord.AllowedMentions.none())
             else:
-                sent = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+                sent = await channel.send(embeds=embeds, view=view, allowed_mentions=discord.AllowedMentions.none())
             panel["message_id"] = sent.id
             self._registered_messages.add(sent.id)
             return sent
-        edit_kwargs = {"embed": embed, "view": view, "allowed_mentions": discord.AllowedMentions.none()}
+        edit_kwargs = {"embeds": embeds, "view": view, "allowed_mentions": discord.AllowedMentions.none()}
         if upload is not None:
             edit_kwargs["attachments"] = [upload]
         elif clear_attachments:
