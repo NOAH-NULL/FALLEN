@@ -342,12 +342,24 @@ class Bot(commands.AutoShardedBot):
         return restored
 
     async def restore_deleted_resource(self, guild, resource, action):
-        """Best-effort recreation of a deleted resource without changing its type."""
+        """Recreate a deleted resource, preferring trusted baseline metadata."""
+        baseline = {}
+        try:
+            snapshot = await self.extreme.snapshot_get(guild.id, "__security_state__")
+            if snapshot and isinstance(snapshot.payload, dict):
+                group = "channels" if action == "channel_delete" else "roles"
+                candidate = (snapshot.payload.get(group) or {}).get(str(resource.id), {})
+                if isinstance(candidate, dict):
+                    baseline = candidate
+        except Exception:
+            log.exception("security baseline lookup failed guild=%s target=%s", guild.id, getattr(resource, "id", None))
+        saved_name = baseline.get("name", resource.name)
+        saved_position = baseline.get("position", resource.position)
         try:
             if action == 'channel_delete' and isinstance(resource, discord.CategoryChannel):
                 created = await guild.create_category(
-                    resource.name,
-                    position=resource.position,
+                    saved_name,
+                    position=saved_position,
                     overwrites=resource.overwrites,
                     reason='Fallen anti-nuke restoration',
                 )
@@ -356,9 +368,9 @@ class Bot(commands.AutoShardedBot):
             if action == 'channel_delete' and isinstance(resource, discord.StageChannel):
                 category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_stage_channel(
-                    resource.name,
+                    saved_name,
                     category=category,
-                    position=resource.position,
+                    position=saved_position,
                     overwrites=resource.overwrites,
                     bitrate=resource.bitrate,
                     user_limit=resource.user_limit,
@@ -370,9 +382,9 @@ class Bot(commands.AutoShardedBot):
             if action == 'channel_delete' and isinstance(resource, discord.VoiceChannel):
                 category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_voice_channel(
-                    resource.name,
+                    saved_name,
                     category=category,
-                    position=resource.position,
+                    position=saved_position,
                     overwrites=resource.overwrites,
                     bitrate=resource.bitrate,
                     user_limit=resource.user_limit,
@@ -393,10 +405,10 @@ class Bot(commands.AutoShardedBot):
                     return None
                 category = guild.get_channel(resource.category_id) if resource.category_id else None
                 created = await guild.create_text_channel(
-                    resource.name,
+                    saved_name,
                     category=category,
                     topic=resource.topic,
-                    position=resource.position,
+                    position=saved_position,
                     nsfw=resource.nsfw,
                     slowmode_delay=resource.slowmode_delay,
                     overwrites=resource.overwrites,
@@ -405,9 +417,9 @@ class Bot(commands.AutoShardedBot):
                 return created.id
 
             if action == 'role_delete' and hasattr(resource, 'name'):
-                role = await guild.create_role(name=resource.name, permissions=resource.permissions, colour=resource.colour, hoist=resource.hoist, mentionable=resource.mentionable, reason='Fallen anti-nuke restoration')
+                role = await guild.create_role(name=saved_name, permissions=resource.permissions, colour=resource.colour, hoist=resource.hoist, mentionable=resource.mentionable, reason='Fallen anti-nuke restoration')
                 try:
-                    await role.edit(position=min(resource.position, guild.me.top_role.position - 1), reason='Fallen anti-nuke restoration')
+                    await role.edit(position=min(saved_position, guild.me.top_role.position - 1), reason='Fallen anti-nuke restoration')
                 except discord.HTTPException:
                     pass
                 return role.id
