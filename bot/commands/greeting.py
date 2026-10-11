@@ -4,6 +4,7 @@ import re
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
+from bot.models import GuildConfig
 
 log = logging.getLogger(__name__)
 
@@ -176,7 +177,36 @@ class Greeting(commands.Cog):
     group = app_commands.Group(name='greeting', description='Advanced welcome and goodbye configuration')
 
     async def _save(self, guild_id: int, **values):
-        await self.bot.guild_config.update(guild_id, **values)
+        # Store real database columns normally; advanced per-kind options live in
+        # the existing welcome_settings JSON column so commands never target
+        # columns that do not exist in GuildConfig.
+        columns = set(GuildConfig.__table__.columns.keys())
+        column_values = {}
+        extra_values = {}
+        for name, value in values.items():
+            if name in columns:
+                column_values[name] = value
+            else:
+                extra_values[name] = value
+
+        if extra_values:
+            existing = column_values.get("welcome_settings")
+            if not isinstance(existing, dict):
+                config = await self.bot.guild_config.get(guild_id)
+                existing = dict((config or {}).get("welcome_settings") or {})
+            else:
+                existing = dict(existing)
+
+            for name, value in extra_values.items():
+                if name == "welcome_enabled":
+                    existing["enabled"] = bool(value)
+                elif name == "goodbye_enabled":
+                    existing["goodbye_enabled"] = bool(value)
+                else:
+                    existing[name] = value
+            column_values["welcome_settings"] = existing
+
+        await self.bot.guild_config.update(guild_id, **column_values)
 
     @staticmethod
     def _can_send(channel: discord.abc.GuildChannel, me: discord.Member, require_embed: bool = True) -> tuple[bool, str]:
@@ -242,6 +272,8 @@ class Greeting(commands.Cog):
             return template
 
     def build_embed(self, kind: str, member: discord.Member, cfg: dict, extra: dict = None) -> discord.Embed:
+        # Advanced options are persisted in the JSON settings column.
+        cfg = {**cfg, **(cfg.get("welcome_settings") or {})}
         guild_name = member.guild.name
         
         msg_template = cfg.get(f'{kind}_message', f'Welcome {{mention}} to {{server}}!')
@@ -507,10 +539,10 @@ class Greeting(commands.Cog):
         defaults = {
             f'{kind}_enabled': True,
             f'{kind}_channel_id': None,
-            f'{kind}_message': f'Welcome {{mention}} to {{server}}!',
-            f'{kind}_embed_title': f'Welcome to {{server}}',
+            f'{kind}_message': 'Welcome {mention} to {server}!' if kind == 'welcome' else 'Goodbye {name}!',
+            f'{kind}_embed_title': 'Welcome!' if kind == 'welcome' else 'Goodbye!',
             f'{kind}_embed_enabled': True,
-            f'{kind}_embed_color': 0x5865F2,
+            f'{kind}_embed_color': 0x5865F2 if kind == 'welcome' else 0x95A5A6,
             f'{kind}_image_url': '',
             f'{kind}_show_thumbnail': True,
             f'{kind}_show_footer': True,
