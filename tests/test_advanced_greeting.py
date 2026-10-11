@@ -66,3 +66,22 @@ def test_welcome_engine_source_exists():
         'alert',
     ):
         assert name in source
+
+
+
+def test_greeting_delivery_has_one_owner_and_no_legacy_duplicate_listeners():
+    slash_source = Path('bot/commands/greeting.py').read_text()
+    worker_source = Path('bot/workers/greetings.py').read_text()
+    assert 'async def on_member_join' not in slash_source
+    assert 'async def on_member_remove' not in slash_source
+    assert 'self.bot.greeting_worker.deliver(' in slash_source
+    assert 'test_mode=True' in slash_source
+    assert 'and not test_mode' in worker_source
+
+
+def test_greeting_test_commands_do_not_trigger_welcome_side_effects():
+    prefix_source = Path('bot/commands/greeting_prefix.py').read_text()
+    worker_source = Path('bot/workers/greetings.py').read_text()
+    assert 'test_mode=True' in prefix_source
+    assert 'if kind == "welcome" and not test_mode:' in worker_source
+    assert 'and not test_mode' in worker_source
