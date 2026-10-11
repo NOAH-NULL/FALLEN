@@ -25,9 +25,12 @@ def test_advanced_greeting_migration_exists():
 
 
 def test_advanced_greeting_commands_exist():
-    source = Path('bot/commands/greeting.py').read_text()
+    slash_source = Path('bot/commands/greeting.py').read_text()
+    prefix_source = Path('bot/commands/greeting_prefix.py').read_text()
+    for name in ('edit', 'toggle', 'embed', 'color', 'image', 'preview', 'test', 'channel', 'roles', 'reset', 'status'):
+        assert f"name='{name}'" in slash_source
     for name in ('status', 'placeholders', 'dm', 'button', 'details', 'preset', 'mode', 'roles', 'log', 'security', 'button-set', 'bots', 'reliability', 'advanced'):
-        assert f"name='{name}'" in source
+        assert f"name='{name}'" in prefix_source
 
 
 def test_advanced_greeting_prefix_commands_exist():
