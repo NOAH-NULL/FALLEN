@@ -5,7 +5,7 @@ import re
 import time
 from urllib.parse import urlparse
 import regex as safe_regex
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, select, func, or_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import GuildConfig, FeatureRecord, SecurityEvent, ScheduledAction, AutoModRule, MemberProfile, Reputation, Playlist, Ticket, ConfigSnapshot
 
@@ -127,7 +127,11 @@ class ExtremeService:
                 .where(
                     ScheduledAction.executed.is_(False),
                     ScheduledAction.run_at <= now,
-                    (ScheduledAction.processing.is_(False) | (ScheduledAction.claimed_at < stale)),
+                    or_(
+                        ScheduledAction.processing.is_(False),
+                        ScheduledAction.claimed_at.is_(None),
+                        ScheduledAction.claimed_at < stale,
+                    ),
                 )
                 .order_by(ScheduledAction.run_at)
                 .limit(limit)
@@ -258,7 +262,8 @@ class ExtremeService:
     async def playlist(self,guild_id,owner_id,name,server_wide=False):
         async with self.db.session() as s: return (await s.execute(select(Playlist).where(Playlist.guild_id==guild_id,Playlist.owner_id==owner_id,Playlist.name==name))).scalar_one_or_none()
     async def save_playlist(self,guild_id,owner_id,name,tracks,server_wide=False):
-        if len(name)>64 or not name.strip(): raise ValueError('Invalid playlist name')
+        name = str(name).strip()
+        if len(name)>64 or not name: raise ValueError('Invalid playlist name')
         async with self.db.session() as s:
             row=(await s.execute(select(Playlist).where(Playlist.guild_id==guild_id,Playlist.owner_id==owner_id,Playlist.name==name).with_for_update())).scalar_one_or_none()
             if not row: row=Playlist(guild_id=guild_id,owner_id=owner_id,name=name); s.add(row)
