@@ -65,21 +65,44 @@ class DashboardAPI:
         rows=await self.bot.extreme.snapshots(int(r.match_info['guild_id']))
         return web.json_response({'items':[{'id':x.id,'name':x.name,'created_by':x.created_by,'created_at':x.created_at.isoformat() if x.created_at else None} for x in rows]})
 
-    async def restore_snapshot(self,r):
-        gid=int(r.match_info['guild_id']); guard=self._guard(r,gid)
-        if guard:return guard
-        try: body=await r.json()
-        except Exception: body={}
-        name=str(body.get('name','__security_state__'))[:64]
-        guild=self.bot.get_guild(gid)
-        if name=='__security_state__':
-            result=await self.bot.restore_security_state(guild,name)
+    async def restore_snapshot(self, r):
+        raw_gid = r.match_info['guild_id']
+        guard = self._guard(r, raw_gid)
+        if guard:
+            return guard
+        gid = int(raw_gid)
+        try:
+            body = await r.json()
+        except Exception:
+            return web.json_response({'error': 'invalid JSON'}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({'error': 'JSON body must be an object'}, status=400)
+        name = str(body.get('name', '')).strip()
+        if not name or len(name) > 64:
+            return web.json_response({'error': 'snapshot name is required (1–64 characters)'}, status=400)
+        guild = self.bot.get_guild(gid)
+        if name == '__security_state__':
+            result = await self.bot.restore_security_state(guild, name)
+        elif name.startswith('__'):
+            return web.json_response({'error': 'reserved recovery snapshots cannot be restored through this endpoint'}, status=400)
         else:
-            snap=await self.bot.extreme.snapshot_get(gid,name)
-            if not snap:return web.json_response({'error':'snapshot not found'},status=404)
-            result={'snapshot':name,'payload_keys':list(snap.payload.keys())}
-        await self.bot.extreme.record_security(gid,'dashboard_snapshot_restore',details={'name':name})
-        return web.json_response({'ok':True,'result':result})
+            snap = await self.bot.extreme.snapshot_get(gid, name)
+            if not snap:
+                return web.json_response({'error': 'snapshot not found'}, status=404)
+            try:
+                result = await self.bot.extreme.restore_features(
+                    gid,
+                    snap.payload.get('features', {}),
+                )
+            except ValueError as exc:
+                return web.json_response({'error': str(exc)}, status=400)
+            result = {'snapshot': name, **result}
+        await self.bot.extreme.record_security(
+            gid,
+            'dashboard_snapshot_restore',
+            details={'name': name, 'result': result},
+        )
+        return web.json_response({'ok': True, 'result': result})
 
     async def patch_automod(self,r):
         gid=int(r.match_info['guild_id']); guard=self._guard(r,gid)
