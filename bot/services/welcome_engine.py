@@ -55,17 +55,19 @@ class WelcomeEngine:
             out.update(raw)
         legacy = legacy or {}
 
-        # Preserve the older controls while making the advanced settings the
-        # single source of truth for new behavior.
-        if not raw:
+        # Preserve legacy values for options not yet migrated into JSON.
+        # A partial JSON update must not silently discard unrelated old settings.
+        raw_settings = raw if isinstance(raw, dict) else {}
+        if "dm_enabled" not in raw_settings:
             out["dm_enabled"] = bool(legacy.get("welcome_dm_enabled", False))
+        if "show_details" not in raw_settings:
             out["show_details"] = bool(legacy.get("welcome_show_details", True))
-            if legacy.get("welcome_button_enabled") and legacy.get("welcome_button_url"):
-                out["buttons"] = [{
-                    "enabled": True,
-                    "label": (legacy.get("welcome_button_label") or "Read the Rules")[:80],
-                    "url": str(legacy.get("welcome_button_url")).strip(),
-                }]
+        if "buttons" not in raw_settings and legacy.get("welcome_button_enabled") and legacy.get("welcome_button_url"):
+            out["buttons"] = [{
+                "enabled": True,
+                "label": (legacy.get("welcome_button_label") or "Read the Rules")[:80],
+                "url": str(legacy.get("welcome_button_url")).strip(),
+            }]
 
         configured_age_days = out.get("new_account_days", 7)
         out["new_account_days"] = max(0, min(3650, int(7 if configured_age_days is None else configured_age_days)))
@@ -83,7 +85,7 @@ class WelcomeEngine:
             if value > 0 and value not in role_ids:
                 role_ids.append(value)
         legacy_role = legacy.get("autorole_id")
-        if not raw and legacy_role:
+        if "auto_role_ids" not in raw_settings and legacy_role:
             try:
                 legacy_role = int(legacy_role)
                 if legacy_role not in role_ids:
