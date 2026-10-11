@@ -211,14 +211,30 @@ class TextCommands(commands.Cog):
     @commands.guild_only()
     async def lock(self,ctx):
         from bot.ui import success_embed
-        await ctx.channel.set_permissions(ctx.guild.default_role,send_messages=False,reason=f'Lock by {ctx.author}')
+        # Preserve every existing @everyone overwrite bit; changing only
+        # send_messages must not erase unrelated channel permissions.
+        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        overwrite.send_messages = False
+        await ctx.channel.set_permissions(
+            ctx.guild.default_role,
+            overwrite=overwrite,
+            reason=f'Lock by {ctx.author}',
+        )
         await ctx.send(embed=success_embed('Channel locked', f'{ctx.channel.mention} is now locked for @everyone.'))
     @commands.command(name='unlock')
     @commands.has_permissions(manage_channels=True)
     @commands.guild_only()
     async def unlock(self,ctx):
         from bot.ui import success_embed
-        await ctx.channel.set_permissions(ctx.guild.default_role,send_messages=None,reason=f'Unlock by {ctx.author}')
+        # Restore inheritance only for send_messages while preserving the
+        # rest of the current @everyone overwrite.
+        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        overwrite.send_messages = None
+        await ctx.channel.set_permissions(
+            ctx.guild.default_role,
+            overwrite=overwrite,
+            reason=f'Unlock by {ctx.author}',
+        )
         await ctx.send(embed=success_embed('Channel unlocked', f'{ctx.channel.mention} has returned to inherited permissions.'))
 
     # Utility/community
