@@ -1,6 +1,7 @@
 import copy
 from collections import deque
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import discord
 import pytest
@@ -175,3 +176,18 @@ async def test_recreated_channel_is_added_to_existing_lockdown_recovery_snapshot
     assert second.overwrite.view_channel is True
     assert second.overwrite.add_reactions is False
     assert (guild.id, "__lockdown__") not in extreme.snapshots
+
+
+@pytest.mark.asyncio
+async def test_newly_joined_guild_gets_a_security_baseline_immediately():
+    guild = SimpleNamespace(id=555, me=SimpleNamespace(id=999))
+    bot = SimpleNamespace(
+        guilds=[],
+        guild_config=SimpleNamespace(invalidate=AsyncMock()),
+        snapshot_security_state=AsyncMock(),
+    )
+
+    await Bot.on_guild_join(bot, guild)
+
+    bot.guild_config.invalidate.assert_awaited_once_with(guild.id)
+    bot.snapshot_security_state.assert_awaited_once_with(guild, guild.me.id)
