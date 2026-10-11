@@ -26,6 +26,15 @@ def test_rules_embed_uses_admin_supplied_content_and_all_rules():
     assert "This content is not predefined." in embed.description
 
 
+def test_rules_panel_has_standard_companion_embed():
+    embed = Rules._companion_embed({})
+    assert embed.title == "Rules & Access"
+    assert "Please read the rules in the panel above" in embed.description
+    assert "**Role buttons**" in embed.description
+    assert "**Need help?**" in embed.description
+    assert embed.footer.text == "FALLEN • Server information"
+
+
 def test_rules_panel_has_exactly_four_buttons_and_unconfigured_slots_are_disabled():
     panel = {
         "buttons": [
