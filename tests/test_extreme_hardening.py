@@ -10,6 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 from bot.models import Playlist
 from bot.services.extreme import IMPLEMENTED_FEATURES, ExtremeService
+from bot.services.platform import PlatformService
 
 
 class FakeResult:
@@ -185,3 +186,14 @@ async def test_validate_reports_malformed_feature_flag_types():
     service = ExtremeService(ConfigDB({"automatic_lockdown": "false"}))
     errors = await service.validate(1)
     assert any("must be a boolean" in error for error in errors)
+
+
+@pytest.mark.asyncio
+async def test_due_reminders_can_reclaim_rows_with_null_claim_time():
+    db = FakeDB()
+    service = PlatformService(db)
+
+    await service.due_reminders()
+
+    sql = str(db.session_obj.statement.compile(dialect=postgresql.dialect()))
+    assert "reminders.claimed_at IS NULL" in sql
