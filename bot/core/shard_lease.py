@@ -114,6 +114,15 @@ class ShardLeaseManager:
                         return
         except asyncio.CancelledError:
             raise
+        except Exception:
+            # A failed renewal is indistinguishable from lost ownership. Never
+            # keep processing events after the lease-renewer has failed.
+            self.healthy = False
+            log.exception(
+                'shard lease renewal failed; entering fail-closed shutdown owner=%s',
+                self.owner,
+            )
+            await self._terminate_bot()
 
     async def _terminate_bot(self):
         try:
