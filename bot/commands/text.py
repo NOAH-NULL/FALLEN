@@ -141,6 +141,7 @@ class TextCommands(commands.Cog):
         e.add_field(name='Reason',value=reason[:1024],inline=False); e.add_field(name='Active warnings',value=f'`{count}`')
         await ctx.send(embed=e)
     @commands.command(name='warnings', aliases=['warns'])
+    @commands.has_permissions(moderate_members=True)
     @commands.guild_only()
     async def warnings(self,ctx,member:discord.Member):
         rows=await self.bot.moderation.warnings(ctx.guild.id,member.id)
@@ -348,6 +349,7 @@ class TextCommands(commands.Cog):
     @commands.command(name='coinflip')
     async def coinflip(self,ctx): await ctx.send(f'🪙 **{random.choice(("Heads","Tails"))}**')
     @commands.command(name='case')
+    @commands.has_permissions(moderate_members=True)
     @commands.guild_only()
     async def case(self,ctx,member:discord.Member):
         rows=await self.bot.platform.cases(ctx.guild.id,member.id); await ctx.send(embed=discord.Embed(title=f'Cases • {member}',description='\n'.join(f'`#{r.id}` **{r.action}** — {r.reason} (<@{r.moderator_id}>)' for r in rows) or 'No cases found.'))
