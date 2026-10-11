@@ -98,7 +98,10 @@ def test_stored_banner_bytes_are_safe_for_json_cache():
 
 @pytest.mark.asyncio
 async def test_slash_greeting_image_url_is_saved():
-    config = SimpleNamespace(update=AsyncMock())
+    config = SimpleNamespace(
+        get=AsyncMock(return_value={"welcome_settings": {}}),
+        update=AsyncMock(),
+    )
     cog = Greeting(SimpleNamespace(guild_config=config))
     interaction = SimpleNamespace(
         guild_id=42,
@@ -107,7 +110,41 @@ async def test_slash_greeting_image_url_is_saved():
 
     await Greeting.set_image.callback(cog, interaction, 'welcome', 'https://example.com/banner.gif')
 
-    config.update.assert_awaited_once_with(42, welcome_image_url='https://example.com/banner.gif')
+    config.update.assert_awaited_once_with(
+        42, welcome_settings={"welcome_image_url": "https://example.com/banner.gif"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_greeting_toggle_persists_in_supported_settings_json():
+    config = SimpleNamespace(
+        get=AsyncMock(return_value={"welcome_settings": {}}),
+        update=AsyncMock(),
+    )
+    cog = Greeting(SimpleNamespace(guild_config=config))
+    interaction = SimpleNamespace(
+        guild_id=42,
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    await Greeting.toggle.callback(cog, interaction, "welcome", False)
+    config.update.assert_awaited_once_with(42, welcome_settings={"enabled": False})
+
+
+@pytest.mark.asyncio
+async def test_goodbye_toggle_persists_in_supported_settings_json():
+    config = SimpleNamespace(
+        get=AsyncMock(return_value={"welcome_settings": {}}),
+        update=AsyncMock(),
+    )
+    cog = Greeting(SimpleNamespace(guild_config=config))
+    interaction = SimpleNamespace(
+        guild_id=42,
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    await Greeting.toggle.callback(cog, interaction, "goodbye", False)
+    config.update.assert_awaited_once_with(42, welcome_settings={"goodbye_enabled": False})
 
 
 @pytest.mark.asyncio
@@ -205,3 +242,74 @@ async def test_forced_welcome_test_bypasses_normal_dedupe_and_delivery_settings(
     welcome.should_deliver.assert_not_called()
     welcome.claim.assert_not_called()
     worker._send_public.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_disabled_goodbye_is_not_delivered():
+    cfg = {"welcome_settings": {"goodbye_enabled": False}}
+    bot = SimpleNamespace(
+        guild_config=SimpleNamespace(get=AsyncMock(return_value=cfg)),
+        welcome_engine=SimpleNamespace(get=AsyncMock(return_value={"goodbye_enabled": False})),
+        greetings=SimpleNamespace(render=AsyncMock()),
+        log=SimpleNamespace(info=MagicMock(), warning=MagicMock()),
+    )
+    worker = GreetingWorker(bot)
+    member = SimpleNamespace(guild=SimpleNamespace(id=42))
+
+    delivered = await worker.deliver(member, "goodbye")
+
+    assert delivered is False
+    bot.greetings.render.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_plain_text_greeting_mode_sends_message_content():
+    guild = SimpleNamespace(
+        id=42, member_count=3, name="Test Server", icon=None, me=None,
+        get_member=MagicMock(return_value=None),
+    )
+    member = SimpleNamespace(
+        id=7, bot=False, guild=guild, mention="<@7>", display_name="Member",
+        name="member", created_at=discord.utils.utcnow(), joined_at=None,
+        display_avatar=None,
+    )
+    channel = SimpleNamespace(permissions_for=MagicMock(return_value=SimpleNamespace(
+        send_messages=True, attach_files=True, embed_links=True,
+    )))
+    cfg = {
+        "welcome_embed_enabled": False,
+        "welcome_message": "Welcome {mention}!",
+        "welcome_background": None,
+        "welcome_background_data": None,
+    }
+    welcome = SimpleNamespace(
+        get=AsyncMock(return_value={
+            "enabled": True, "public_enabled": True, "dm_enabled": False,
+            "buttons": [], "dedupe_seconds": 90, "show_details": False,
+        }),
+        should_deliver=MagicMock(return_value=True),
+        claim=MagicMock(return_value=True),
+        risk=MagicMock(return_value=None),
+        apply_roles=AsyncMock(return_value=0),
+        alert=AsyncMock(return_value=False),
+    )
+    greetings = SimpleNamespace(
+        render=AsyncMock(return_value=BytesIO(b"image")),
+        output_extension=MagicMock(return_value="png"),
+    )
+    bot = SimpleNamespace(
+        guild_config=SimpleNamespace(get=AsyncMock(return_value=cfg)),
+        welcome_engine=welcome,
+        greetings=greetings,
+        log=SimpleNamespace(info=MagicMock(), warning=MagicMock()),
+    )
+    worker = GreetingWorker(bot)
+    worker._send_public = AsyncMock()
+
+    delivered = await worker.deliver(
+        member, "welcome", force_channel=channel, test_mode=True
+    )
+
+    assert delivered is True
+    assert worker._send_public.await_args.kwargs["content"] == "Welcome <@7>!"
+    assert worker._send_public.await_args.kwargs["embed"] is None
