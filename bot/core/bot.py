@@ -80,12 +80,28 @@ class Bot(commands.AutoShardedBot):
             return 0
         existing = await self.extreme.snapshot_get(guild_id, "__lockdown__")
         if not existing:
-            state = {str(ch.id): ch.overwrites_for(guild.default_role).send_messages for ch in guild.text_channels}
-            await self.extreme.snapshot_save(guild_id, guild.me.id if guild.me else 0, "__lockdown__", {"channels": state, "created_at": discord.utils.utcnow().isoformat()})
+            # Preserve the complete @everyone overwrite, not only send_messages.
+            # set_permissions(..., send_messages=False) can replace the whole
+            # overwrite and silently erase unrelated channel permissions.
+            state = {}
+            for channel in guild.text_channels:
+                overwrite = channel.overwrites_for(guild.default_role)
+                allow, deny = overwrite.pair()
+                state[str(channel.id)] = {"allow": allow.value, "deny": deny.value}
+            await self.extreme.snapshot_save(
+                guild_id,
+                guild.me.id if guild.me else 0,
+                "__lockdown__",
+                {"channels": state, "created_at": discord.utils.utcnow().isoformat()},
+            )
         changed = 0
         for channel in guild.text_channels:
             try:
-                await channel.set_permissions(guild.default_role, send_messages=False, reason=reason[:512])
+                overwrite = channel.overwrites_for(guild.default_role)
+                overwrite.send_messages = False
+                await channel.set_permissions(
+                    guild.default_role, overwrite=overwrite, reason=reason[:512]
+                )
                 changed += 1
             except discord.HTTPException:
                 continue
@@ -99,18 +115,49 @@ class Bot(commands.AutoShardedBot):
         snapshot = await self.extreme.snapshot_get(guild_id, "__lockdown__")
         state = snapshot.payload.get("channels", {}) if snapshot else {}
         changed = 0
+        failed = False
         for channel in guild.text_channels:
-            try:
-                if str(channel.id) not in state:
-                    continue
-                value = state[str(channel.id)]
-                await channel.set_permissions(guild.default_role, send_messages=value, reason=reason[:512])
-                changed += 1
-            except discord.HTTPException:
+            if str(channel.id) not in state:
                 continue
-        if snapshot:
+            try:
+                saved = state[str(channel.id)]
+                if isinstance(saved, dict) and "allow" in saved and "deny" in saved:
+                    # Current snapshot format restores every permission bit.
+                    overwrite = discord.PermissionOverwrite.from_pair(
+                        discord.Permissions(int(saved["allow"])),
+                        discord.Permissions(int(saved["deny"])),
+                    )
+                else:
+                    # Backward compatibility for snapshots created by older
+                    # releases, which stored only send_messages.
+                    overwrite = channel.overwrites_for(guild.default_role)
+                    overwrite.send_messages = saved
+                await channel.set_permissions(
+                    guild.default_role, overwrite=overwrite, reason=reason[:512]
+                )
+                changed += 1
+            except (discord.HTTPException, TypeError, ValueError, KeyError):
+                failed = True
+                log.exception(
+                    "lockdown recovery failed guild=%s channel=%s",
+                    guild_id,
+                    channel.id,
+                )
+        # Keep the recovery point if any channel failed, so an administrator
+        # can retry instead of losing the only saved state.
+        if snapshot and not failed:
             await self.extreme.snapshot_delete(guild_id, "__lockdown__")
-        await self.extreme.record_security(guild_id, "lockdown_recovery", details={"reason": reason, "channels": changed, "restored_snapshot": bool(snapshot)})
+        await self.extreme.record_security(
+            guild_id,
+            "lockdown_recovery",
+            details={
+                "reason": reason,
+                "channels": changed,
+                "restored_snapshot": bool(snapshot),
+                "complete": not failed,
+                "snapshot_retained": bool(snapshot and failed),
+            },
+        )
         return changed
 
     async def snapshot_security_state(self, guild, created_by=0, name="__security_state__"):
