@@ -63,10 +63,14 @@ class Bot(commands.AutoShardedBot):
             # AutoShardedBot discovers its recommended count during connect.
             # Acquire all corresponding leases before gateway workers can act.
             gateway = await self.http.get_bot_gateway()
-            # discord.py versions may return multiple gateway values; the
-            # recommended shard count is the second tuple item.
+            # discord.py returns (recommended_shard_count, gateway_url)
+            # here, so read the shard count from the first tuple item.
             if isinstance(gateway, tuple):
-                recommended_shard_count = int(gateway[1] or 1) if len(gateway) > 1 else 1
+                shard_value = next(
+                    (value for value in gateway if isinstance(value, int) and not isinstance(value, bool)),
+                    1,
+                )
+                recommended_shard_count = int(shard_value or 1)
             elif isinstance(gateway, dict):
                 recommended_shard_count = int(gateway.get("shards") or 1)
             else:
