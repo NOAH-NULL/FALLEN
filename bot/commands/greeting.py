@@ -1,6 +1,7 @@
 import string
 import logging
 import re
+from urllib.parse import urlsplit
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
@@ -364,6 +365,19 @@ class Greeting(commands.Cog):
             err = validate_template(url)
             if err:
                 return await interaction.response.send_message(f'❌ {err}', ephemeral=True)
+            sample = url.format(
+                mention='@user', name='Member', username='member', server='Server',
+                count=1, membercount=1, inviter='Unknown', inviter_name='Unknown',
+                invites=0, account_age='1 day', account_created='2026-01-01',
+                joined_at='2026-01-01', boosts=0, server_id=42, user_id=7,
+                avatar='https://example.com/avatar.png', server_icon='https://example.com/server.png',
+            )
+            parsed = urlsplit(sample)
+            if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+                return await interaction.response.send_message(
+                    '❌ Use a valid HTTP(S) image URL, optionally with supported placeholders.',
+                    ephemeral=True,
+                )
 
         await self._save(interaction.guild_id, **{f'{kind}_image_url': url or ''})
         if url:
