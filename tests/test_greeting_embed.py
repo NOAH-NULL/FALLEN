@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from PIL import Image
@@ -13,6 +13,7 @@ from bot.commands.text import TextCommands
 from bot.commands.greeting_prefix import GreetingPrefix
 from bot.services.guild_config import GuildConfigService
 from bot.services.greeting import GreetingRenderer
+from bot.workers.greetings import GreetingWorker
 
 
 def make_gif():
@@ -155,3 +156,52 @@ async def test_prefix_greeting_message_is_saved():
     await GreetingPrefix.greeting_message.callback(cog, ctx, 'goodbye', message='See you, {name}!')
 
     config.update.assert_awaited_once_with(42, goodbye_message='See you, {name}!')
+
+
+@pytest.mark.asyncio
+async def test_forced_welcome_test_bypasses_normal_dedupe_and_delivery_settings():
+    me = SimpleNamespace(id=99)
+    permissions = SimpleNamespace(send_messages=True, attach_files=True, embed_links=True)
+    channel = SimpleNamespace(permissions_for=MagicMock(return_value=permissions))
+    guild = SimpleNamespace(
+        id=42, name="Test Server", member_count=3, me=me, icon=None,
+        get_member=MagicMock(return_value=None),
+    )
+    member = SimpleNamespace(id=7, bot=False, guild=guild)
+    config = SimpleNamespace(get=AsyncMock(return_value={
+        "welcome_embed_enabled": True,
+        "welcome_message": "Welcome!",
+        "welcome_background": "assets/welcome.gif",
+        "welcome_background_data": None,
+    }))
+    welcome = SimpleNamespace(
+        get=AsyncMock(return_value={
+            "public_enabled": False, "dm_enabled": False, "dedupe_seconds": 90,
+            "retry_attempts": 0, "retry_backoff": 0.1, "show_details": False,
+        }),
+        should_deliver=MagicMock(return_value=False),
+        claim=MagicMock(return_value=False),
+        risk=MagicMock(return_value=None),
+        apply_roles=AsyncMock(return_value=0),
+        alert=AsyncMock(return_value=False),
+    )
+    greetings = SimpleNamespace(
+        render=AsyncMock(return_value=BytesIO(b"image")),
+        output_extension=MagicMock(return_value="png"),
+    )
+    bot = SimpleNamespace(
+        guild_config=config,
+        welcome_engine=welcome,
+        greetings=greetings,
+        log=SimpleNamespace(info=MagicMock(), warning=MagicMock()),
+    )
+    worker = GreetingWorker(bot)
+    worker._build_embed = lambda *args, **kwargs: None
+    worker._send_public = AsyncMock()
+
+    delivered = await worker.deliver(member, "welcome", force_channel=channel)
+
+    assert delivered is True
+    welcome.should_deliver.assert_not_called()
+    welcome.claim.assert_not_called()
+    worker._send_public.assert_awaited_once()
