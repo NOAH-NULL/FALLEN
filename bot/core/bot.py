@@ -76,12 +76,12 @@ class Bot(commands.AutoShardedBot):
         else: await self.tree.sync()
     @staticmethod
     def _lockdown_channels(guild):
-        # Forum/media channels and threads can still accept posts if only
-        # ordinary text channels are locked. Parent-channel thread permissions
-        # are handled through send_messages_in_threads below.
+        # Voice/stage channel text chats and forum/media posts must also be
+        # locked. Parent-channel thread permissions are handled through
+        # send_messages_in_threads below.
         channels = list(guild.text_channels)
         known_ids = {channel.id for channel in channels}
-        for attr in ("forums", "media_channels"):
+        for attr in ("voice_channels", "stage_channels", "forums", "media_channels"):
             for channel in getattr(guild, attr, []):
                 if channel.id not in known_ids:
                     channels.append(channel)
