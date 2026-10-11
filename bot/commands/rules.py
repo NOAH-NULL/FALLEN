@@ -243,7 +243,7 @@ class Rules(commands.Cog):
         if message_id:
             try:
                 message = await channel.fetch_message(int(message_id))
-            except (discord.NotFound, discord.Forbidden):
+            except discord.NotFound:
                 message = None
         if message is None:
             # A deleted panel cannot retain its old uploaded attachment; do not
