@@ -62,8 +62,8 @@ class Bot(commands.AutoShardedBot):
         if self.settings.parsed_shard_ids is None and self.settings.shard_count is None:
             # AutoShardedBot discovers its recommended count during connect.
             # Acquire all corresponding leases before gateway workers can act.
-            gateway = await self.http.get_bot_gateway()
-            recommended_shard_count = int(gateway.get('shards') or 1)
+            gateway_url, recommended_shard_count = await self.http.get_bot_gateway()
+            recommended_shard_count = int(recommended_shard_count or 1)
         shard_ids = resolve_shard_ids(
             self.settings.parsed_shard_ids,
             self.settings.shard_count,
