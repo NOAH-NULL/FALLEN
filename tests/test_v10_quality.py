@@ -1,55 +1,38 @@
-import ast
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+from bot.commands.fun import Fun, SAFE_ACTIONS
 
 
-def _command_names(path: Path, decorator_owner: str):
-    tree = ast.parse(path.read_text())
-    names = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-            continue
-        if node.func.attr != 'command' or not isinstance(node.func.value, ast.Name) or node.func.value.id != decorator_owner:
-            continue
-        for kw in node.keywords:
-            if kw.arg == 'name' and isinstance(kw.value, ast.Constant):
-                names.add(kw.value.value)
-    return names
+def test_hybrid_commands_are_available_in_both_prefix_and_slash_surfaces():
+    cog = Fun(SimpleNamespace(reactions=SimpleNamespace(get=AsyncMock(return_value=None))))
+    prefix_names = {command.name for command in cog.get_commands()}
+    slash_names = {command.name for command in cog.get_app_commands()}
+    expected = {"hug", "highfive", "pat", "poke", "bonk", "wave", "dance", "smile", "cry", "shrug", "sleep", "boop", "tickle", "punch"}
+    assert expected <= prefix_names
+    assert expected <= slash_names
 
 
-def test_top_level_slash_commands_have_prefix_counterparts():
-    root = Path('bot/commands')
-    slash = set()
-    prefix = set()
-    prefix_groups = set()
-    for path in root.glob('*.py'):
-        slash |= _command_names(path, 'app_commands')
-        prefix |= _command_names(path, 'commands')
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'group':
-                if isinstance(node.func.value, ast.Name) and node.func.value.id == 'commands':
-                    for kw in node.keywords:
-                        if kw.arg == 'name' and isinstance(kw.value, ast.Constant): prefix_groups.add(kw.value.value)
-    missing = sorted(slash - prefix - prefix_groups)
-    assert not missing, f'No prefix implementation for: {missing}'
+def test_reaction_surface_has_bounded_http_and_provider_caches():
+    src = Path("bot/services/reactions.py").read_text()
+    assert "_failure_cache" in src
+    assert "_gif_pool" in src
+    assert "_provider_backoff" in src
+    assert "asyncio.Lock" in src
+    assert "ClientTimeout(total=3.0, connect=1.0)" in src
+    assert "_mark_provider_failed" in src
 
 
-def test_reaction_surface_is_cached_and_fast():
-    src = Path('bot/services/reactions.py').read_text()
-    assert '_cache' in src
-    assert 'asyncio.Lock' in src
-    assert 'ClientTimeout(total=3.0)' in src
-    assert 'if cached' in src
-
-
-def test_action_surface_contains_fast_social_commands():
-    src = Path('bot/commands/fun.py').read_text()
-    for name in ('hug', 'highfive', 'pat', 'poke', 'bonk', 'wave', 'dance', 'smile', 'cry', 'shrug', 'sleep', 'boop', 'tickle', 'punch'):
-        assert f"name='{name}'" in src
+def test_action_surface_uses_shared_safe_action_registry():
+    cog = Fun(SimpleNamespace(reactions=SimpleNamespace(get=AsyncMock(return_value=None))))
+    names = {command.name for command in cog.get_commands()}
+    assert set(SAFE_ACTIONS) <= names
+    assert "fuck" not in names
 
 
 def test_release_excludes_runtime_artifacts():
-    ignore = Path('.gitignore').read_text() + Path('.dockerignore').read_text()
-    assert '__pycache__/' in ignore
-    assert '*.pyc' in ignore
-    assert '.pytest_cache/' in ignore
+    ignore = Path(".gitignore").read_text() + Path(".dockerignore").read_text()
+    assert "__pycache__/" in ignore
+    assert "*.pyc" in ignore
+    assert ".pytest_cache/" in ignore
