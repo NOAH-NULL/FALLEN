@@ -152,15 +152,21 @@ class V16Runtime:
                     matches.append((policy, f'domain_whitelist:{policy.name}'))
 
         if settings.get('regex_rules'):
+            # Bound total per-message regex time, not merely each individual
+            # pattern. Fifty separate 25ms timeouts would still stall a worker.
+            deadline = time.monotonic() + 0.05
             for rule in [
                 item for item in rules if item.enabled and item.kind == 'regex'
             ][:50]:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
                 try:
                     matched = safe_regex.search(
                         rule.pattern,
                         content,
                         flags=safe_regex.IGNORECASE,
-                        timeout=0.025,
+                        timeout=min(0.005, remaining),
                     )
                 except (safe_regex.error, TimeoutError):
                     continue
