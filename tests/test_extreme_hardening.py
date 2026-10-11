@@ -101,3 +101,18 @@ def test_user_snapshots_cannot_overwrite_reserved_recovery_keys():
     source = Path("bot/commands/extreme.py").read_text()
     assert 'name.startswith("__")' in source
     assert "reserved for internal recovery data" in source
+
+@pytest.mark.asyncio
+async def test_schedule_rejects_unsupported_actions_before_database_access():
+    service = ExtremeService(FakeDB())
+    with pytest.raises(ValueError, match="must be 'ban' or 'timeout'"):
+        await service.schedule(1, 2, "delete_everything", __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
+
+
+@pytest.mark.asyncio
+async def test_schedule_rejects_naive_timestamps():
+    from datetime import datetime
+
+    service = ExtremeService(FakeDB())
+    with pytest.raises(ValueError, match="timezone-aware"):
+        await service.schedule(1, 2, "ban", datetime(2030, 1, 1))
