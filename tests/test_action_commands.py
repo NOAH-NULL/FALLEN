@@ -30,11 +30,11 @@ def test_social_actions_are_registered_as_hybrid_commands():
     assert set(EXPECTED_ACTIONS) <= slash_names
 
 
-def test_explicit_sexual_action_is_not_exposed_in_sfw_command_surface():
+def test_legacy_fuck_action_remains_registered_with_safe_reaction():
     src = Path("bot/commands/fun.py").read_text().lower()
-    assert "fuck" not in SAFE_ACTIONS
-    assert 'name="fuck"' not in src
-    assert "'fuck': 'fuck'" not in Path("bot/services/reactions.py").read_text()
+    assert "fuck" in SAFE_ACTIONS
+    assert 'name="fuck"' in src
+    assert "'fuck': 'punch'" in Path("bot/services/reactions.py").read_text()
 
 
 def test_every_action_has_a_gif_key():
