@@ -391,6 +391,8 @@ class Rules(commands.Cog):
         guild = interaction.guild
         me = guild.me
         actor = interaction.user
+        if not label.strip():
+            return await self._reply(interaction, "Button label cannot be blank.", ephemeral=True)
         if role.is_default() or role.managed:
             return await interaction.response.send_message("Choose a normal, assignable server role.", ephemeral=True)
         if any(getattr(role.permissions, name, False) for name in DANGEROUS_ROLE_PERMISSIONS):
