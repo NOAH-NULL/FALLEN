@@ -13,7 +13,7 @@ class FakeMember:
     def __ge__(self, _other):
         return False
 
-    async def __str__(self):
+    def __str__(self):
         return "test-member"
 
 
