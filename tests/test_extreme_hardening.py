@@ -147,3 +147,41 @@ async def test_automod_rejects_regex_rules_over_runtime_limit():
     service = ExtremeService(QueuedDB([None, 10, 50]))
     with pytest.raises(ValueError, match="at most 50 regex rules"):
         await service.upsert_automod_rule(1, "new-regex", "regex", "spam")
+
+
+class ConfigSession:
+    def __init__(self, settings):
+        self.settings = settings
+
+    async def get(self, model, guild_id):
+        return type("ConfigRow", (), {"extreme_settings": self.settings})()
+
+
+class ConfigDB:
+    def __init__(self, settings):
+        self.settings = settings
+
+    @asynccontextmanager
+    async def session(self):
+        yield ConfigSession(self.settings)
+
+
+@pytest.mark.asyncio
+async def test_string_false_cannot_enable_a_security_feature():
+    service = ExtremeService(ConfigDB({"automatic_lockdown": "false"}))
+    settings = await service.get(1)
+    assert settings["automatic_lockdown"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_rejects_non_boolean_feature_values():
+    service = ExtremeService(FakeDB())
+    with pytest.raises(ValueError, match="must be a boolean"):
+        await service.set(1, "automatic_lockdown", "false")
+
+
+@pytest.mark.asyncio
+async def test_validate_reports_malformed_feature_flag_types():
+    service = ExtremeService(ConfigDB({"automatic_lockdown": "false"}))
+    errors = await service.validate(1)
+    assert any("must be a boolean" in error for error in errors)
