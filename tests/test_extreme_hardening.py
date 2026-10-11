@@ -42,6 +42,12 @@ class FakeSession:
     def add(self, value):
         self.added.append(value)
 
+    async def get(self, model, guild_id, with_for_update=False):
+        return getattr(self, "row", None)
+
+    async def flush(self):
+        return None
+
     async def commit(self):
         return None
 
@@ -197,3 +203,25 @@ async def test_due_reminders_can_reclaim_rows_with_null_claim_time():
 
     sql = str(db.session_obj.statement.compile(dialect=postgresql.dialect()))
     assert "reminders.claimed_at IS NULL" in sql
+
+
+@pytest.mark.asyncio
+async def test_snapshot_restore_is_atomic_and_skips_unsupported_flags():
+    db = FakeDB()
+    row = type("ConfigRow", (), {"extreme_settings": {"automatic_lockdown": True}})()
+    db.session_obj.row = row
+    service = ExtremeService(db)
+
+    result = await service.restore_features(1, {
+        "automatic_lockdown": False,
+        "server_reputation": True,
+        "anti_bot_join": True,
+        "unknown_flag": True,
+    })
+
+    assert row.extreme_settings == {
+        "automatic_lockdown": False,
+        "server_reputation": True,
+    }
+    assert result["restored"] == 2
+    assert set(result["skipped"]) == {"anti_bot_join", "unknown_flag"}
