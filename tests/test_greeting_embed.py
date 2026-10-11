@@ -371,3 +371,19 @@ def test_worker_uses_saved_custom_image_and_footer_options():
     assert embed.image.url == "https://example.com/custom.gif"
     assert embed.footer.text == "User 7 on Test Server"
     assert embed.thumbnail.url is None
+
+
+@pytest.mark.asyncio
+async def test_slash_greeting_image_rejects_non_url_without_saving():
+    config = SimpleNamespace(
+        get=AsyncMock(return_value={"welcome_settings": {}}),
+        update=AsyncMock(),
+    )
+    response = SimpleNamespace(send_message=AsyncMock())
+    cog = Greeting(SimpleNamespace(guild_config=config))
+    interaction = SimpleNamespace(guild_id=42, response=response)
+
+    await Greeting.set_image.callback(cog, interaction, "welcome", "not a URL")
+
+    config.update.assert_not_awaited()
+    response.send_message.assert_awaited_once()
