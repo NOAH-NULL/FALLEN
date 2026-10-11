@@ -21,6 +21,7 @@ class ReactionGifService:
     OTAKU_GIFS_URL = 'https://api.otakugifs.xyz/gif'
 
     ALIASES: Dict[str, str] = {
+        'fuck': 'punch',  # Keep the legacy command on a non-explicit reaction GIF
         'highfive': 'wave',
         'pat': 'pat',
         'bonk': 'punch',
