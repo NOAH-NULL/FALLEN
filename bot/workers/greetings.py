@@ -212,7 +212,9 @@ class GreetingWorker:
             else dict(DEFAULT_SETTINGS, enabled=True, public_enabled=True, dm_enabled=False)
         )
 
-        if kind == "welcome":
+        # A forced test delivery is an explicit administrator action: it must
+        # not be blocked by normal delivery settings or the join-event dedupe.
+        if kind == "welcome" and force_channel is None:
             if not self.bot.welcome_engine.should_deliver(member, kind, settings):
                 return False
             if not self.bot.welcome_engine.claim(
