@@ -736,22 +736,32 @@ class Bot(commands.AutoShardedBot):
         except Exception:
             log.exception("level update failed")
     async def close(self):
-        # Stop accepting work and drain accepted gateway events before releasing
-        # shard ownership. Stop the scheduler while this instance still owns
-        # its leases, so it cannot run actions after ownership is relinquished.
+        # Best-effort cleanup: one broken dependency must not prevent the
+        # remaining workers, leases, database pool, or Discord client closing.
+        async def close_step(label, operation):
+            try:
+                await operation
+            except Exception:
+                log.exception("shutdown step failed component=%s", label)
+
         if self.health_runner:
-            await self.health_runner.cleanup()
+            await close_step("health_server", self.health_runner.cleanup())
             self.health_runner = None
-        await self.music.close()
-        await self.gateway_workers.close(self.settings.gateway_shutdown_timeout)
-        await self.scheduler.close()
-        await self.invites.close()
-        await self.invalidation.close()
-        await self.greeting_worker.close()
-        await self.greetings.close()
-        await self.reactions.close()
-        await self.dashboard.close()
-        await self.shard_leases.release()
-        await self.cache.close()
-        await self.db.close()
-        await super().close()
+        await close_step("music", self.music.close())
+        # Drain accepted gateway work before relinquishing ownership.
+        await close_step(
+            "gateway_workers",
+            self.gateway_workers.close(self.settings.gateway_shutdown_timeout),
+        )
+        # The scheduler must stop before this process releases its shard leases.
+        await close_step("scheduler", self.scheduler.close())
+        await close_step("invites", self.invites.close())
+        await close_step("cache_invalidation", self.invalidation.close())
+        await close_step("greeting_worker", self.greeting_worker.close())
+        await close_step("greetings", self.greetings.close())
+        await close_step("reactions", self.reactions.close())
+        await close_step("dashboard", self.dashboard.close())
+        await close_step("shard_leases", self.shard_leases.release())
+        await close_step("redis_cache", self.cache.close())
+        await close_step("database", self.db.close())
+        await close_step("discord_client", super().close())
