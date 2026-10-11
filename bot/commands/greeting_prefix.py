@@ -241,59 +241,54 @@ class GreetingPrefix(commands.Cog):
             f'Dedupe: {settings.get("dedupe_seconds")}s'
         )
 
-    @greeting_group.command(name='test')
-    @commands.has_permissions(manage_guild=True)
-    async def greeting_test(self,ctx,kind:str='welcome'):
-        kind=kind.lower().strip()
-        if kind not in ('welcome','goodbye'):
-            return await ctx.send('❌ kind must be `welcome` or `goodbye`.')
-        cfg=await self.bot.guild_config.get(ctx.guild.id)
-        require_embed=bool(cfg.get(f'{kind}_embed_enabled',True))
-        me=ctx.guild.me
+    async def _run_greeting_test(self, ctx, kind: str):
+        kind = kind.lower().strip()
+        if kind not in ('welcome', 'goodbye'):
+            return await ctx.send('❌ kind must be welcome or goodbye.')
+        cfg = await self.bot.guild_config.get(ctx.guild.id)
+        require_embed = bool(cfg.get(f'{kind}_embed_enabled', True))
+        me = ctx.guild.me
         if me is None:
             return await ctx.send('❌ I cannot resolve my server member.')
-        permissions=ctx.channel.permissions_for(me)
-        missing=[name for name,ok in (
-            ('View Channel',permissions.view_channel),
-            ('Send Messages',permissions.send_messages),
-            ('Attach Files',permissions.attach_files),
-            ('Embed Links',permissions.embed_links if require_embed else True),
+        permissions = ctx.channel.permissions_for(me)
+        missing = [name for name, ok in (
+            ('View Channel', permissions.view_channel),
+            ('Send Messages', permissions.send_messages),
+            ('Attach Files', permissions.attach_files),
+            ('Embed Links', permissions.embed_links if require_embed else True),
         ) if not ok]
         if missing:
             return await ctx.send(f'❌ I am missing: **{", ".join(missing)}** in {ctx.channel.mention}.')
         try:
-            await self.bot.greeting_worker.deliver(
-                ctx.author,
-                kind,
-                force_channel=ctx.channel,
-            )
+            delivered = await self.bot.greeting_worker.deliver(ctx.author, kind, force_channel=ctx.channel)
+            if delivered is False:
+                return await ctx.send('❌ The greeting worker declined this test delivery.')
         except ValueError as exc:
-            return await ctx.send(f'❌ Greeting test failed: `{exc}`.')
+            return await ctx.send(f'❌ Greeting test failed: {exc}.')
         except discord.Forbidden:
             return await ctx.send('❌ Discord denied the greeting send. Check my channel permissions.')
         except discord.HTTPException as exc:
-            self.bot.log.warning(
-                'prefix greeting test failed guild=%s kind=%s status=%s',
-                ctx.guild.id, kind, getattr(exc,'status','?')
-            )
-            return await ctx.send('❌ Discord rejected the greeting test (`' + str(getattr(exc,'status','unknown')) + '`).')
+            self.bot.log.warning('prefix greeting test failed guild=%s kind=%s status=%s', ctx.guild.id, kind, getattr(exc, 'status', '?'))
+            return await ctx.send('❌ Discord rejected the greeting test (status ' + str(getattr(exc, 'status', 'unknown')) + ').')
         except Exception:
-            self.bot.log.exception(
-                'prefix greeting test crashed guild=%s kind=%s user=%s',
-                ctx.guild.id, kind, ctx.author.id
-            )
+            self.bot.log.exception('prefix greeting test crashed guild=%s kind=%s user=%s', ctx.guild.id, kind, ctx.author.id)
             return await ctx.send('❌ Greeting test failed unexpectedly. Check the bot logs.')
         await ctx.send(f'✅ {kind.title()} test sent successfully.')
 
+    @greeting_group.command(name='test')
+    @commands.has_permissions(manage_guild=True)
+    async def greeting_test(self, ctx, kind: str = 'welcome'):
+        await self._run_greeting_test(ctx, kind)
+
     @greeting_group.command(name='welcome')
     @commands.has_permissions(manage_guild=True)
-    async def greeting_welcome_test(self,ctx):
-        await self.greeting_test.callback(self,ctx,'welcome')
+    async def greeting_welcome_test(self, ctx):
+        await self._run_greeting_test(ctx, 'welcome')
 
     @greeting_group.command(name='goodbye')
     @commands.has_permissions(manage_guild=True)
-    async def greeting_goodbye_test(self,ctx):
-        await self.greeting_test.callback(self,ctx,'goodbye')
+    async def greeting_goodbye_test(self, ctx):
+        await self._run_greeting_test(ctx, 'goodbye')
 
 async def setup(bot):
     await bot.add_cog(GreetingPrefix(bot))
