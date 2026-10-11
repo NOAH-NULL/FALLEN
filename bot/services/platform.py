@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, or_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import ModCase, Reminder, Suggestion, Economy
 
@@ -24,7 +24,11 @@ class PlatformService:
                 .where(
                     Reminder.delivered.is_(False),
                     Reminder.due_at <= now,
-                    (Reminder.processing.is_(False) | (Reminder.claimed_at < stale)),
+                    or_(
+                        Reminder.processing.is_(False),
+                        Reminder.claimed_at.is_(None),
+                        Reminder.claimed_at < stale,
+                    ),
                 )
                 .order_by(Reminder.due_at)
                 .limit(limit)
