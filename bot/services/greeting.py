@@ -174,6 +174,8 @@ class GreetingRenderer:
                 boosts=int(getattr(guild, 'premium_subscription_count', 0) or 0),
                 server_id=getattr(guild, 'id', 0),
                 user_id=getattr(member, 'id', 0),
+                avatar=getattr(getattr(member, 'display_avatar', None), 'url', ''),
+                server_icon=getattr(getattr(guild, 'icon', None), 'url', ''),
             )
         except (KeyError, ValueError, IndexError):
             logger.warning('Invalid greeting template; sending unformatted template')
