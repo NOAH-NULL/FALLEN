@@ -1,3 +1,22 @@
+def resolve_shard_ids(configured_ids=None, configured_count=None, recommended_count=None):
+    """Return the exact shard IDs this process must lease before connecting."""
+    if configured_ids is not None:
+        shard_ids = [int(shard_id) for shard_id in configured_ids]
+        if not shard_ids or any(shard_id < 0 for shard_id in shard_ids):
+            raise ValueError("SHARD_IDS must contain non-negative shard IDs")
+        if len(set(shard_ids)) != len(shard_ids):
+            raise ValueError("SHARD_IDS must not contain duplicates")
+        return shard_ids
+
+    count = configured_count if configured_count is not None else recommended_count
+    if count is None:
+        count = 1
+    count = int(count)
+    if count < 1:
+        raise ValueError("Shard count must be at least 1")
+    return list(range(count))
+
+
 import asyncio
 import logging
 import secrets
