@@ -1,6 +1,7 @@
 import asyncio
 import time
 from io import BytesIO
+from urllib.parse import urlsplit
 
 import discord
 
@@ -77,13 +78,13 @@ class GreetingWorker:
         except (TypeError, ValueError):
             return DEFAULT_COLORS[kind]
 
-    async def _send_public(self, channel, *, embed, rendered, filename, view, settings):
+    async def _send_public(self, channel, *, content=None, embed, rendered, filename, view, settings):
         attempts = int(settings.get("retry_attempts", 2))
         backoff = float(settings.get("retry_backoff", 0.75))
 
         async def operation():
             return await channel.send(
-                content=None,
+                content=content,
                 embed=embed,
                 file=discord.File(BytesIO(rendered), filename=filename),
                 view=view,
@@ -143,7 +144,7 @@ class GreetingWorker:
             timestamp=discord.utils.utcnow(),
         )
 
-        if getattr(member, "display_avatar", None):
+        if settings.get(f"{kind}_show_thumbnail", True) and getattr(member, "display_avatar", None):
             embed.set_thumbnail(url=member.display_avatar.url)
         if getattr(member.guild, "icon", None):
             embed.set_author(name=member.guild.name, icon_url=member.guild.icon.url)
@@ -184,12 +185,23 @@ class GreetingWorker:
                     risk_value = "✅ Normal account age"
                 embed.add_field(name="Account check", value=risk_value, inline=True)
 
-        embed.set_image(url=f"attachment://{filename}")
-        if kind == "welcome":
+        image_template = settings.get(f"{kind}_image_url")
+        image_url = self._format(image_template, member, count, invite_id, invite_uses) if image_template else ""
+        parsed_image = urlsplit(image_url)
+        if parsed_image.scheme in {"https", "http"} and parsed_image.netloc:
+            embed.set_image(url=image_url)
+        else:
+            embed.set_image(url=f"attachment://{filename}")
+
+        footer_template = settings.get(f"{kind}_footer_text")
+        if footer_template is not None:
+            footer = self._format(footer_template, member, count, invite_id, invite_uses)[:2048]
+        elif kind == "welcome":
             footer = f"{member.guild.name} • Member #{count}"
         else:
             footer = f"{member.guild.name} • Goodbye"
-        embed.set_footer(text=footer)
+        if settings.get(f"{kind}_show_footer", True) and footer:
+            embed.set_footer(text=footer)
         return embed
 
     async def deliver(
@@ -207,11 +219,14 @@ class GreetingWorker:
             raise ValueError("Greetings can only be sent in a server.")
 
         cfg = await self.bot.guild_config.get(member.guild.id)
-        settings = (
-            await self.bot.welcome_engine.get(member.guild.id, cfg)
-            if kind == "welcome"
-            else dict(DEFAULT_SETTINGS, enabled=True, public_enabled=True, dm_enabled=False)
-        )
+        settings = await self.bot.welcome_engine.get(member.guild.id, cfg)
+        if kind == "goodbye":
+            # Goodbye messages are public-only, but still honor their own toggle
+            # and advanced per-kind display options stored in welcome_settings.
+            settings["public_enabled"] = True
+            settings["dm_enabled"] = False
+            if force_channel is None and not settings.get("goodbye_enabled", True):
+                return False
 
         # A forced test delivery is an explicit administrator action: it must
         # not be blocked by normal delivery settings or the join-event dedupe.
@@ -311,8 +326,14 @@ class GreetingWorker:
                     raise ValueError(
                         f"Missing permissions in {channel.mention}: {', '.join(missing)}"
                     )
+            public_content = None
+            if embed is None:
+                public_content = self._format(
+                    message_template, member, count, invite_id, invite_uses
+                )[:1900]
             await self._send_public(
                 channel,
+                content=public_content,
                 embed=embed,
                 rendered=rendered,
                 filename=filename,
