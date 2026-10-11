@@ -146,3 +146,32 @@ def test_stale_anti_nuke_actor_counters_are_pruned():
     assert stale_key not in bot._destructive_actions
     assert list(bot._destructive_actions[active_key]) == [95.0]
     assert bot._last_destructive_prune == 100.0
+
+
+@pytest.mark.asyncio
+async def test_recreated_channel_is_added_to_existing_lockdown_recovery_snapshot():
+    first = FakeChannel(
+        456,
+        discord.PermissionOverwrite(view_channel=True, send_messages=True),
+    )
+    guild = FakeGuild([first])
+    extreme = FakeExtreme()
+    bot = fake_bot(guild, extreme)
+
+    await Bot.security_lockdown(bot, guild.id)
+    second = FakeChannel(
+        789,
+        discord.PermissionOverwrite(view_channel=True, send_messages=True, add_reactions=False),
+    )
+    guild.text_channels.append(second)
+
+    await Bot.security_lockdown(bot, guild.id)
+    snapshot = extreme.snapshots[(guild.id, "__lockdown__")]
+    assert set(snapshot.payload["channels"]) == {"456", "789"}
+
+    await Bot.security_unlockdown(bot, guild.id)
+
+    assert second.overwrite.send_messages is True
+    assert second.overwrite.view_channel is True
+    assert second.overwrite.add_reactions is False
+    assert (guild.id, "__lockdown__") not in extreme.snapshots
