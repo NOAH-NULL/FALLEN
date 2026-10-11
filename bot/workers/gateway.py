@@ -103,6 +103,12 @@ class GatewayWorkerPool:
         guild = getattr(payload, 'guild', None)
         return getattr(guild, 'shard_id', None)
 
+    @staticmethod
+    def _fallback_shard_id(guild_id: int, shard_count: int) -> int:
+        # Discord assigns guilds using the high bits of the snowflake, not
+        # guild_id % shard_count.
+        return (int(guild_id) >> 22) % max(1, int(shard_count or 1))
+
     async def _dispatch(self, event):
         if event.kind == 'member_join':
             await self.bot.process_member_join(event.payload)
@@ -129,7 +135,7 @@ class GatewayWorkerPool:
                     if hasattr(lease_mgr, 'context_for'):
                         if shard_id is None:
                             shard_count = max(1, getattr(self.bot, 'shard_count', 1) or 1)
-                            shard_id = guild_id % shard_count
+                            shard_id = self._fallback_shard_id(guild_id, shard_count)
                         ctx = lease_mgr.context_for(shard_id)
                         if ctx is None or not await lease_mgr.validate_fence(shard_id, ctx.fence):
                             log.warning('rejecting gateway event with stale/missing fence guild=%s shard=%s', guild_id, shard_id)
