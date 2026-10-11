@@ -6,6 +6,7 @@ from bot.ui import info_embed
 
 SAFE_ACTIONS = {
     'hug': ('hug', '🤗', 'gave a friendly hug to', 'hugged back'),
+    'fuck': ('fuck', '💋', 'fuck'),
     'highfive': ('highfive', '✋', 'gave a high-five to', 'high-fived back'),
     'fistbump': ('fistbump', '👊', 'fist-bumped', 'fist-bumped back'),
     'pat': ('pat', '🫳', 'gave a friendly pat to', 'patted back'),
@@ -19,16 +20,16 @@ SAFE_ACTIONS = {
     'sleep': ('sleep', '😴', 'fell asleep near', 'slept near'),
     'boop': ('boop', '👉', 'booped', 'booped back'),
     'tickle': ('tickle', '✨', 'tickled', 'tickled back'),
-    'punch': ('punch', '👊', 'landed a cartoon punch on', 'punched back'),
-    'slap': ('slap', '🖐️', 'landed a cartoon slap on', 'slapped back'),
-    'bite': ('bite', '🦷', 'gave a cartoon nibble to', 'bit back'),
+    'punch': ('punch', '👊', 'landed a punch on', 'punched back'),
+    'slap': ('slap', '🖐️', 'landed a slap on', 'slapped back'),
+    'bite': ('bite', '🦷', 'gave a nibble to', 'bit back'),
     'hold': ('hold', '🫶', 'held onto', 'held back'),
-    'attack': ('punch', '⚔️', 'launched a cartoon attack at', 'attacked back'),
-    'shoot': ('punch', '💥', 'fired a cartoon confetti blaster at', 'shot back'),
+    'attack': ('punch', '⚔️', 'launched an attack at', 'attacked back'),
+    'shoot': ('punch', '💥', 'fired a confetti blaster at', 'shot back'),
     'bully': ('bonk', '😤', 'playfully bullied', 'bullied back'),
     'pout': ('pout', '😗', 'pouted at', 'pouted back at'),
     'blush': ('blush', '😊', 'blushed at', 'blushed back at'),
-    'kill': ('punch', '💀', 'cartoonishly defeated', 'retaliated against'),
+    'kill': ('punch', '💀', 'defeated', 'retaliated against'),
     'wreck': ('punch', '💥', 'absolutely wrecked', 'wrecked back'),
     'kiss': ('kiss', '💋', 'kissed affectionately', 'kissed back'),
     'flirt': ('flirt', '🫦', 'flirted with', 'flirted back with'),
@@ -43,7 +44,8 @@ class ActionView(discord.ui.View):
         self.initiator = initiator
         self.target = target
 
-        _, emoji, _, _ = SAFE_ACTIONS[action]
+        action_data = SAFE_ACTIONS[action]
+        emoji = action_data[1]
 
         button_label = f"{action.capitalize()} back!"
         self.reciprocate_button = discord.ui.Button(
@@ -103,7 +105,14 @@ class Fun(commands.Cog):
         user = ctx_or_interaction.user if is_interaction else ctx_or_interaction.author
 
         target_member = target or user
-        key, emoji, initial_verb, reciprocate_verb = SAFE_ACTIONS[action]
+        action_data = SAFE_ACTIONS[action]
+        
+        if len(action_data) == 3:
+            key, emoji, initial_verb = action_data
+            reciprocate_verb = initial_verb
+        else:
+            key, emoji, initial_verb, reciprocate_verb = action_data
+
         url = await self._get_reaction_url(key)
 
         # Explicit branch separation between self-action and target-action
@@ -131,112 +140,116 @@ class Fun(commands.Cog):
     async def _handle_cmd(self, ctx_or_interaction, action: str, member: discord.Member | None = None):
         target = self._resolve_target(ctx_or_interaction, member)
         await self._execute_action(ctx_or_interaction, action, target)
+        
+    @commands.hybrid_command(name="fuck", description="fuck")
+    async def fuck(self, ctx: commands.Context, member: discord.Member | None = None):
+        await self._handle_cmd(ctx, "fuck", member)
 
-    @commands.hybrid_command(name="kill", description="A cartoon action with GIF")
+    @commands.hybrid_command(name="kill", description="kill")
     async def kill(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "kill", member)
 
-    @commands.hybrid_command(name="hug", description="A polished Fallen community action")
+    @commands.hybrid_command(name="hug", description="hugs")
     async def hug(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "hug", member)
 
-    @commands.hybrid_command(name="highfive", description="A polished Fallen community action")
+    @commands.hybrid_command(name="highfive", description="highfive")
     async def highfive(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "highfive", member)
 
-    @commands.hybrid_command(name="fistbump", description="A friendly cartoon fist-bump action")
+    @commands.hybrid_command(name="fistbump", description="firstbump")
     async def fistbump(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "fistbump", member)
 
-    @commands.hybrid_command(name="pat", description="A polished Fallen community action")
+    @commands.hybrid_command(name="pat", description="pat")
     async def pat(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "pat", member)
 
-    @commands.hybrid_command(name="poke", description="A polished Fallen community action")
+    @commands.hybrid_command(name="poke", description="poke")
     async def poke(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "poke", member)
 
-    @commands.hybrid_command(name="bonk", description="A polished Fallen community action")
+    @commands.hybrid_command(name="bonk", description="bonk!")
     async def bonk(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "bonk", member)
 
-    @commands.hybrid_command(name="wave", description="A polished Fallen community action")
+    @commands.hybrid_command(name="wave", description="wave")
     async def wave(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "wave", member)
 
-    @commands.hybrid_command(name="dance", description="A polished Fallen community action")
+    @commands.hybrid_command(name="dance", description="dance")
     async def dance(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "dance", member)
 
-    @commands.hybrid_command(name="smile", description="A polished Fallen community action")
+    @commands.hybrid_command(name="smile", description="smile")
     async def smile(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "smile", member)
 
-    @commands.hybrid_command(name="cry", description="A polished Fallen community action")
+    @commands.hybrid_command(name="cry", description="cry")
     async def cry(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "cry", member)
 
-    @commands.hybrid_command(name="shrug", description="A polished Fallen community action")
+    @commands.hybrid_command(name="shrug", description="shrug")
     async def shrug(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "shrug", member)
 
-    @commands.hybrid_command(name="sleep", description="A polished Fallen community action")
+    @commands.hybrid_command(name="sleep", description="sleep")
     async def sleep(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "sleep", member)
 
-    @commands.hybrid_command(name="boop", description="A polished Fallen community action")
+    @commands.hybrid_command(name="boop", description="boop")
     async def boop(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "boop", member)
 
-    @commands.hybrid_command(name="tickle", description="A polished Fallen community action")
+    @commands.hybrid_command(name="tickle", description="tickle")
     async def tickle(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "tickle", member)
 
-    @commands.hybrid_command(name="punch", description="A polished Fallen community action")
+    @commands.hybrid_command(name="punch", description="punch")
     async def punch(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "punch", member)
 
-    @commands.hybrid_command(name="slap", description="A polished Fallen community action")
+    @commands.hybrid_command(name="slap", description="slap")
     async def slap(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "slap", member)
 
-    @commands.hybrid_command(name="bite", description="A polished Fallen community action")
+    @commands.hybrid_command(name="bite", description="bites")
     async def bite(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "bite", member)
 
-    @commands.hybrid_command(name="hold", description="A polished Fallen community action")
+    @commands.hybrid_command(name="hold", description="hold")
     async def hold(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "hold", member)
 
-    @commands.hybrid_command(name="attack", description="A polished Fallen community action")
+    @commands.hybrid_command(name="attack", description="attack")
     async def attack(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "attack", member)
 
-    @commands.hybrid_command(name="shoot", description="A polished Fallen community action")
+    @commands.hybrid_command(name="shoot", description="shoot")
     async def shoot(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "shoot", member)
 
-    @commands.hybrid_command(name="bully", description="A polished Fallen community action")
+    @commands.hybrid_command(name="bully", description="bully")
     async def bully(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "bully", member)
 
-    @commands.hybrid_command(name="pout", description="A polished Fallen community action")
+    @commands.hybrid_command(name="pout", description="pout")
     async def pout(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "pout", member)
 
-    @commands.hybrid_command(name="blush", description="A polished Fallen community action")
+    @commands.hybrid_command(name="blush", description="blushes")
     async def blush(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "blush", member)
 
-    @commands.hybrid_command(name="wreck", description="A cartoon action with a GIF")
+    @commands.hybrid_command(name="wreck", description="wreck")
     async def wreck(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "wreck", member)
 
-    @commands.hybrid_command(name="kiss", description="A polished Fallen community action")
+    @commands.hybrid_command(name="kiss", description="kisses")
     async def kiss(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "kiss", member)
 
-    @commands.hybrid_command(name="flirt", description="A polished Fallen community action")
+    @commands.hybrid_command(name="flirt", description="flirt")
     async def flirt(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "flirt", member)
 
