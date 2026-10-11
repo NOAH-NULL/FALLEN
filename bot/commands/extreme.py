@@ -3,7 +3,7 @@ import io, json
 from datetime import timedelta
 import discord
 from discord.ext import commands
-from bot.services.extreme import FEATURES
+from bot.services.extreme import FEATURES, IMPLEMENTED_FEATURES
 
 class Extreme(commands.Cog):
     """Single hybrid interface for the V16 capabilities.
@@ -17,23 +17,34 @@ class Extreme(commands.Cog):
     @commands.guild_only()
     async def v16(self, ctx: commands.Context):
         state = await self.bot.extreme.get(ctx.guild.id)
-        enabled = sum(bool(v) for v in state.values())
-        await ctx.send(f'⚙️ **Fallen V16:** `{enabled}/100` capabilities enabled. Use `{ctx.prefix}v16 help` or `/v16 help`.')
+        enabled = sum(bool(state.get(name, False)) for name in IMPLEMENTED_FEATURES)
+        await ctx.send(
+            f'⚙️ **Fallen V16:** `{enabled}/{len(IMPLEMENTED_FEATURES)}` implemented capabilities enabled. '
+            f'The catalog contains 100 entries; unfinished entries cannot be enabled yet. '
+            f'Use `{ctx.prefix}v16 help` or `/v16 help`.'
+        )
 
     @v16.command(name='help', description='Show V16 capability domains')
     async def help_cmd(self, ctx):
         state = await self.bot.extreme.get(ctx.guild.id)
         lines = []
         for category, names in FEATURES.items():
-            active = sum(1 for name in names if state.get(name, False))
-            lines.append(f'**{category.title()}** — {active}/{len(names)}')
+            supported = [name for name in names if name in IMPLEMENTED_FEATURES]
+            active = sum(1 for name in supported if state.get(name, False))
+            catalog_only = len(names) - len(supported)
+            suffix = f' · {catalog_only} catalog-only' if catalog_only else ''
+            lines.append(f'**{category.title()}** — {active}/{len(supported)} enabled{suffix}')
         await ctx.send('\n'.join(lines))
 
     @v16.command(name='status', description='Show V16 capability status')
     async def status(self, ctx):
         state=await self.bot.extreme.get(ctx.guild.id)
-        active=[k for k,v in state.items() if v]
-        await ctx.send(f'**{len(active)}/100 enabled**\n'+(', '.join(f'`{x}`' for x in active) if active else 'No optional capabilities enabled.'))
+        active = [key for key in IMPLEMENTED_FEATURES if state.get(key, False)]
+        await ctx.send(
+            f'**{len(active)}/{len(IMPLEMENTED_FEATURES)} implemented capabilities enabled**\n'
+            + (', '.join(f'`{name}`' for name in sorted(active)) if active else 'No optional capabilities enabled.')
+            + '\nCatalog-only entries are unavailable until implemented.'
+        )
 
     @v16.command(name='set', description='Enable or disable a capability')
     @commands.has_guild_permissions(manage_guild=True)
@@ -62,8 +73,9 @@ class Extreme(commands.Cog):
         row=await self.bot.extreme.snapshot_get(ctx.guild.id,name)
         if not row: return await ctx.send(f'❌ Snapshot `{name}` does not exist.')
         features=row.payload.get('features',{})
-        for key,value in features.items():
-            if key in self.bot.extreme.all_names(): await self.bot.extreme.set(ctx.guild.id,key,bool(value))
+        for key, value in features.items():
+            if key in IMPLEMENTED_FEATURES:
+                await self.bot.extreme.set(ctx.guild.id, key, bool(value))
         await ctx.send(f'✅ Restored `{name}`.')
 
     @v16.command(name='security-log', description='Show the recent security timeline')
