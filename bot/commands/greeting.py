@@ -279,63 +279,6 @@ class Greeting(commands.Cog):
 
         return embed
 
-    async def _send_greeting(self, kind: str, member: discord.Member):
-        cfg = await self.bot.guild_config.get(member.guild.id)
-        if not cfg.get(f'{kind}_enabled', True):
-            return
-
-        channel_id = cfg.get(f'{kind}_channel_id')
-        if not channel_id:
-            return
-
-        channel = member.guild.get_channel(channel_id)
-        if not channel:
-            return
-
-        use_embed = cfg.get(f'{kind}_embed_enabled', True)
-        ok, missing = self._can_send(channel, member.guild.me, require_embed=use_embed)
-        if not ok:
-            log.warning("Cannot send %s in guild %s channel %s: Missing %s", kind, member.guild.id, channel_id, missing)
-            return
-
-        try:
-            if use_embed:
-                embed = self.build_embed(kind, member, cfg)
-                await channel.send(embed=embed)
-            else:
-                msg_template = cfg.get(f'{kind}_message', f'Welcome {{mention}} to {{server}}!')
-                formatted_msg = self._format_placeholders(msg_template, member)
-                await channel.send(content=formatted_msg)
-        except discord.HTTPException as e:
-            log.error("Failed to send %s message in guild %s: %s", kind, member.guild.id, e)
-
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
-        if member.bot:
-            return
-
-        # 1. Assign Auto Roles
-        cfg = await self.bot.guild_config.get(member.guild.id)
-        settings = await self.bot.welcome_engine.get(member.guild.id, cfg)
-        role_ids = settings.get('auto_role_ids', [])
-        
-        if role_ids:
-            roles_to_add = [member.guild.get_role(rid) for rid in role_ids if member.guild.get_role(rid)]
-            if roles_to_add:
-                try:
-                    await member.add_roles(*roles_to_add, reason="Greeting Cog Auto-Role Assignment")
-                except discord.HTTPException as e:
-                    log.error("Failed to assign auto roles to %s in guild %s: %s", member.id, member.guild.id, e)
-
-        # 2. Dispatch Welcome Message
-        await self._send_greeting('welcome', member)
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member):
-        if member.bot:
-            return
-        await self._send_greeting('goodbye', member)
-
     @group.command(name='edit', description='Interactively edit templates using a popup modal')
     @app_commands.guild_only()
     @app_commands.choices(kind=KIND_CHOICES)
@@ -429,9 +372,58 @@ class Greeting(commands.Cog):
         if not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message("❌ Commands must be run inside a guild.", ephemeral=True)
 
+        cfg = await self.bot.guild_config.get(interaction.guild_id)
+        channel_id = cfg.get(f'{kind}_channel_id')
+        channel = interaction.guild.get_channel(channel_id) if channel_id else None
+        if channel is None:
+            return await interaction.response.send_message(
+                f"❌ No {kind} channel is configured, or the configured channel no longer exists.",
+                ephemeral=True,
+            )
+
+        ok, missing = self._can_send(
+            channel,
+            interaction.guild.me,
+            require_embed=bool(cfg.get(f'{kind}_embed_enabled', True)),
+        )
+        if not ok:
+            return await interaction.response.send_message(
+                f"❌ I cannot send the test greeting in {channel.mention}. Missing: {missing}.",
+                ephemeral=True,
+            )
+
         await interaction.response.defer(ephemeral=True)
-        await self._send_greeting(kind, interaction.user)
-        await interaction.followup.send(f"✅ Executed live test dispatch for **{kind.title()}**.", ephemeral=True)
+        try:
+            delivered = await self.bot.greeting_worker.deliver(
+                interaction.user, kind, force_channel=channel, test_mode=True
+            )
+            if not delivered:
+                return await interaction.followup.send(
+                    f"❌ The {kind} test was not delivered. Check the greeting settings and bot logs.",
+                    ephemeral=True,
+                )
+        except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
+            log.warning(
+                "slash greeting test failed guild=%s kind=%s error=%s",
+                interaction.guild_id, kind, type(exc).__name__,
+            )
+            return await interaction.followup.send(
+                f"❌ The {kind} test failed: {str(exc)[:300]}",
+                ephemeral=True,
+            )
+        except Exception:
+            log.exception(
+                "slash greeting test crashed guild=%s kind=%s user=%s",
+                interaction.guild_id, kind, interaction.user.id,
+            )
+            return await interaction.followup.send(
+                "❌ Greeting test failed unexpectedly. Check the bot logs.",
+                ephemeral=True,
+            )
+        await interaction.followup.send(
+            f"✅ {kind.title()} test delivered to {channel.mention}.",
+            ephemeral=True,
+        )
 
     @group.command(name='channel', description='Set the target channel for welcome/goodbye messages')
     @app_commands.guild_only()
