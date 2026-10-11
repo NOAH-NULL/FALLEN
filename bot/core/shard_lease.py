@@ -13,6 +13,13 @@ def resolve_shard_ids(configured_ids=None, configured_count=None, recommended_co
             raise ValueError("SHARD_IDS must contain non-negative shard IDs")
         if len(set(shard_ids)) != len(shard_ids):
             raise ValueError("SHARD_IDS must not contain duplicates")
+        known_count = configured_count if configured_count is not None else recommended_count
+        if known_count is not None:
+            known_count = int(known_count)
+            if known_count < 1:
+                raise ValueError("Shard count must be at least 1")
+            if any(shard_id >= known_count for shard_id in shard_ids):
+                raise ValueError("SHARD_IDS entries must be smaller than SHARD_COUNT")
         return shard_ids
 
     count = configured_count if configured_count is not None else recommended_count
