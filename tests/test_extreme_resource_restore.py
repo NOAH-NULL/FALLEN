@@ -79,3 +79,53 @@ async def test_recovery_skips_recreation_when_trusted_baseline_is_missing():
 
     assert restored_id is None
     guild.create_voice_channel.assert_not_awaited()
+
+
+
+@pytest.mark.asyncio
+async def test_text_channel_recovery_uses_baseline_metadata_not_modified_event_object():
+    resource = MagicMock(spec=discord.TextChannel)
+    resource.id = 13
+    resource.name = "attacker-renamed"
+    resource.category_id = 88
+    resource.position = 19
+    resource.topic = "attacker-controlled topic"
+    resource.nsfw = True
+    resource.slowmode_delay = 21600
+    resource.overwrites = {}
+    resource.is_news.return_value = False
+
+    category = SimpleNamespace(id=77, name="original-category")
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.side_effect = lambda channel_id: category if channel_id == 77 else None
+    guild.get_role.return_value = None
+    guild.get_member.return_value = None
+    guild.create_text_channel = AsyncMock(return_value=SimpleNamespace(id=101))
+
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=SimpleNamespace(payload={
+        "channels": {
+            "13": {
+                "name": "original-channel",
+                "position": 2,
+                "category_id": 77,
+                "topic": "trusted topic",
+                "nsfw": False,
+                "slowmode_delay": 5,
+                "overwrites": {},
+            }
+        }
+    })))
+
+    restored_id = await Bot.restore_deleted_resource(
+        SimpleNamespace(extreme=extreme), guild, resource, "channel_delete"
+    )
+
+    assert restored_id == 101
+    kwargs = guild.create_text_channel.await_args.kwargs
+    assert guild.create_text_channel.await_args.args[0] == "original-channel"
+    assert kwargs["category"] is category
+    assert kwargs["position"] == 2
+    assert kwargs["topic"] == "trusted topic"
+    assert kwargs["nsfw"] is False
+    assert kwargs["slowmode_delay"] == 5
