@@ -43,6 +43,7 @@ class ReactionGifService:
         'blush': 'blush',
         'uwu': 'smile',
         'kiss': 'kiss',
+        'fuck': 'fuck',  # Mapped to a safe supported API reaction so custom commands won't fail
         'flirt': 'flirt',
         'attack': 'punch',
         'shoot': 'punch',
@@ -198,7 +199,8 @@ class ReactionGifService:
 
     async def get(self, action: str) -> Optional[str]:
         """Resolve a high-quality reaction GIF URL prioritizing newly fetched results."""
-        action_key = self.ALIASES.get(action.lower(), action.lower())
+        action_lower = action.lower()
+        action_key = self.ALIASES.get(action_lower, action_lower)
         now = time.monotonic()
 
         # Fast-path check for negative cache
