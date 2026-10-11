@@ -96,3 +96,8 @@ def test_reputation_grants_are_rate_limited_and_scores_are_bounded():
 def test_user_supplied_v16_text_disables_mentions():
     source = Path("bot/commands/extreme.py").read_text()
     assert source.count("allowed_mentions=discord.AllowedMentions.none()") >= 4
+
+def test_user_snapshots_cannot_overwrite_reserved_recovery_keys():
+    source = Path("bot/commands/extreme.py").read_text()
+    assert 'name.startswith("__")' in source
+    assert "reserved for internal recovery data" in source
