@@ -68,7 +68,7 @@ class Extreme(commands.Cog):
         data=await self.bot.extreme.snapshot(ctx.guild.id)
         await self.bot.extreme.snapshot_save(ctx.guild.id,ctx.author.id,name,data)
         raw=json.dumps(data,indent=2).encode()
-        await ctx.send(f'✅ Snapshot `{name}` saved.', file=discord.File(io.BytesIO(raw),filename=f'{name}.json'))
+        await ctx.send(f'✅ Snapshot `{name}` saved.', file=discord.File(io.BytesIO(raw),filename=f'{name}.json'), allowed_mentions=discord.AllowedMentions.none())
 
     @v16.command(name='restore', description='Restore a named feature configuration snapshot')
     @commands.has_guild_permissions(administrator=True)
@@ -135,14 +135,14 @@ class Extreme(commands.Cog):
         except Exception:
             self.bot.log.exception('V16 AutoMod rule save failed guild=%s rule=%s', ctx.guild.id, name)
             return await ctx.send('❌ Could not save the AutoMod rule because of an internal error. Check the bot logs.')
-        await ctx.send(f'✅ AutoMod rule `{name}` saved.')
+        await ctx.send(f'✅ AutoMod rule `{name}` saved.', allowed_mentions=discord.AllowedMentions.none())
 
     @v16.command(name='profile', description='Set a persistent member profile bio')
     async def profile(self, ctx, *, bio: str=''):
         if not await self.bot.extreme.enabled(ctx.guild.id,'member_profiles'): return await ctx.send('❌ Member profiles are disabled.')
         if len(bio)>500: return await ctx.send('❌ Bio must be 500 characters or fewer.')
         row=await self.bot.extreme.set_profile(ctx.guild.id,ctx.author.id,bio=bio)
-        await ctx.send(f'👤 **{ctx.author.display_name}**\n{row.bio or "No bio set."}')
+        await ctx.send(f'👤 **{ctx.author.display_name}**\n{row.bio or "No bio set."}', allowed_mentions=discord.AllowedMentions.none())
 
     @v16.command(name='reputation', description='Show a member reputation score')
     async def reputation(self, ctx, member: discord.Member | None = None):
@@ -175,7 +175,7 @@ class Extreme(commands.Cog):
         if not vals:
             return await ctx.send('❌ Provide tracks separated by |.')
         await self.bot.extreme.save_playlist(ctx.guild.id, ctx.author.id, name, vals)
-        await ctx.send(f'🎵 Saved playlist {name} with **{len(vals)}** tracks.')
+        await ctx.send(f'🎵 Saved playlist {name} with **{len(vals)}** tracks.', allowed_mentions=discord.AllowedMentions.none())
 
     @v16.command(name='playlist-list', description='List your saved playlists')
     async def playlist_list(self, ctx):
@@ -184,7 +184,7 @@ class Extreme(commands.Cog):
         rows = await self.bot.extreme.playlists(ctx.guild.id, ctx.author.id)
         if not rows:
             return await ctx.send('No playlists saved.')
-        await ctx.send('\n'.join(f'🎵 {r.name} — {len(r.tracks)} tracks' for r in rows))
+        await ctx.send('\n'.join(f'🎵 {r.name} — {len(r.tracks)} tracks' for r in rows), allowed_mentions=discord.AllowedMentions.none())
 
     @v16.command(name='temp-timeout', description='Temporarily timeout a member')
     @commands.has_guild_permissions(moderate_members=True)
