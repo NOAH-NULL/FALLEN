@@ -431,7 +431,14 @@ class Bot(commands.AutoShardedBot):
                 return created.id
 
             if action == 'role_delete' and hasattr(resource, 'name'):
-                role = await guild.create_role(name=saved_name, permissions=resource.permissions, colour=resource.colour, hoist=resource.hoist, mentionable=resource.mentionable, reason='Fallen anti-nuke restoration')
+                permissions = discord.Permissions(int(baseline.get("permissions", resource.permissions.value)))
+                colour = discord.Colour(int(baseline.get("colour", resource.colour.value)))
+                role = await guild.create_role(
+                    name=saved_name, permissions=permissions, colour=colour,
+                    hoist=baseline.get("hoist", resource.hoist),
+                    mentionable=baseline.get("mentionable", resource.mentionable),
+                    reason='Fallen anti-nuke restoration',
+                )
                 try:
                     await role.edit(position=min(saved_position, guild.me.top_role.position - 1), reason='Fallen anti-nuke restoration')
                 except discord.HTTPException:
