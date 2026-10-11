@@ -262,6 +262,12 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setup_panel(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 256], description: app_commands.Range[str, 1, 3000], channel: discord.TextChannel):
+        previous = await self._panel(interaction.guild_id)
+        reuse_message_id = (
+            previous.get("message_id")
+            if previous and int(previous.get("channel_id") or 0) == channel.id
+            else None
+        )
         panel = {
             "title": title.strip(),
             "description": description.strip(),
@@ -273,15 +279,23 @@ class Rules(commands.Cog):
                 {"label": "Button 4", "role_id": None},
             ],
             "channel_id": channel.id,
-            "message_id": None,
+            "message_id": reuse_message_id,
             "image_url": None,
             "image_filename": None,
         }
         try:
             self._validate_panel(panel)
             await self._save_panel(interaction.guild_id, panel)
-            await self._sync_panel(interaction.guild, panel)
+            await self._sync_panel(interaction.guild, panel, clear_attachments=True)
             await self._save_panel(interaction.guild_id, panel)
+            if previous and previous.get("message_id") and not reuse_message_id:
+                old_channel = interaction.guild.get_channel(int(previous.get("channel_id") or 0))
+                if old_channel is not None:
+                    try:
+                        old_message = await old_channel.fetch_message(int(previous["message_id"]))
+                        await old_message.delete(reason="FALLEN rules panel replaced by an administrator")
+                    except (discord.NotFound, discord.Forbidden):
+                        pass
             await interaction.response.send_message(
                 f"Rules panel created in {channel.mention}. Add rules with /rules add and configure all four buttons with /rules button.",
                 ephemeral=True,
