@@ -2,8 +2,9 @@ from pathlib import Path
 from bot.services.levels import LevelService
 
 def test_xp_threshold_scales():
-    assert LevelService.xp_needed(0) == 100
-    assert LevelService.xp_needed(4) == 500
+    assert LevelService.xp_needed(0) == 0
+    assert LevelService.xp_needed(1) == 100
+    assert LevelService.xp_needed(4) == 770
 
 def test_level_commands_are_registered_in_the_level_group():
     source = Path('bot/commands/levels.py').read_text()
