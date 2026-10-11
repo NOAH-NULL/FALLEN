@@ -736,8 +736,22 @@ class Bot(commands.AutoShardedBot):
         except Exception:
             log.exception("level update failed")
     async def close(self):
-        if self.health_runner: await self.health_runner.cleanup()
+        # Stop accepting work and drain accepted gateway events before releasing
+        # shard ownership. Stop the scheduler while this instance still owns
+        # its leases, so it cannot run actions after ownership is relinquished.
+        if self.health_runner:
+            await self.health_runner.cleanup()
+            self.health_runner = None
         await self.music.close()
-        # Drain accepted gateway work before releasing shard ownership or closing dependencies.
         await self.gateway_workers.close(self.settings.gateway_shutdown_timeout)
-        await self.invites.close(); await self.shard_leases.release(); await self.invalidation.close(); await self.scheduler.close(); await self.dashboard.close(); await self.greeting_worker.close(); await self.greetings.close(); await self.reactions.close(); await self.cache.close(); await self.db.close(); await super().close()
+        await self.scheduler.close()
+        await self.invites.close()
+        await self.invalidation.close()
+        await self.greeting_worker.close()
+        await self.greetings.close()
+        await self.reactions.close()
+        await self.dashboard.close()
+        await self.shard_leases.release()
+        await self.cache.close()
+        await self.db.close()
+        await super().close()
