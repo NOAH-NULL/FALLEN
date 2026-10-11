@@ -27,7 +27,10 @@ async def test_lease_renewal_error_marks_unhealthy_and_shuts_down():
     manager = ShardLeaseManager(cache, "test-owner", ttl_ms=3000)
     manager.fences = {0: 7}
     manager.token = "token"
-    manager.bind_shutdown(lambda: closed.set())
+    async def close_callback():
+        closed.set()
+
+    manager.bind_shutdown(close_callback)
 
     await manager._renew()
 
