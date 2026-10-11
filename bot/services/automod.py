@@ -87,17 +87,29 @@ class AutoModService:
             if key in raw:
                 try: defaults[key] = float(raw[key]) if key != 'ttl' else int(raw[key])
                 except (TypeError, ValueError): pass
-        defaults['decay'] = max(0.000001, float(defaults['decay']))
-        defaults['ttl'] = max(30, int(defaults['ttl']))
+        defaults['decay'] = min(1.0, max(0.000001, float(defaults['decay'])))
+        defaults['ttl'] = min(2592000, max(30, int(defaults['ttl'])))
+        for key in ('spam', 'link', 'mention_spam', 'invite_phishing'):
+            defaults[key] = min(1000.0, max(0.0, float(defaults[key])))
         return defaults
 
     async def configure_heat(self, guild_id, **changes):
         allowed = {'decay','ttl','spam','link','mention_spam','invite_phishing'}
         clean = {k: v for k, v in changes.items() if k in allowed and v is not None}
-        if 'decay' in clean: clean['decay'] = max(0.000001, float(clean['decay']))
-        if 'ttl' in clean: clean['ttl'] = max(30, int(clean['ttl']))
+        if 'decay' in clean:
+            clean['decay'] = float(clean['decay'])
+            if not math.isfinite(clean['decay']):
+                raise ValueError('decay must be finite')
+            clean['decay'] = min(1.0, max(0.000001, clean['decay']))
+        if 'ttl' in clean:
+            clean['ttl'] = int(clean['ttl'])
+            clean['ttl'] = min(2592000, max(30, clean['ttl']))
         for k in ('spam','link','mention_spam','invite_phishing'):
-            if k in clean: clean[k] = max(0.0, float(clean[k]))
+            if k in clean:
+                clean[k] = float(clean[k])
+                if not math.isfinite(clean[k]):
+                    raise ValueError(f'{k} must be finite')
+                clean[k] = min(1000.0, max(0.0, clean[k]))
         if self.cache is not None and clean:
             await self.cache.client.hset(f'heat-config:{guild_id}', mapping={k: str(v) for k,v in clean.items()})
             await self.cache.expire(f'heat-config:{guild_id}', 86400 * 30)
