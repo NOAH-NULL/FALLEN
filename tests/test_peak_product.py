@@ -11,7 +11,7 @@ def test_dashboard_has_real_operator_surface_and_auth_header():
 def test_lockdown_restores_exact_default_role_state():
     source = Path('bot/core/bot.py').read_text()
     assert 'overwrites_for(guild.default_role).send_messages' in source
-    assert 'value = state.get(str(channel.id))' in source
+    assert 'value = state[str(channel.id)]' in source
 
 
 def test_anti_nuke_burst_detection_is_wired_to_destructive_events():
