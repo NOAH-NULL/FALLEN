@@ -21,3 +21,11 @@ def test_text_command_surface_is_loaded_and_uses_comma_default():
         for command in Fun(SimpleNamespace(reactions=SimpleNamespace(get=AsyncMock()))).get_commands()
     }
     assert {"hug", "kill", "highfive"} <= action_commands
+
+
+def test_prefix_lock_and_unlock_preserve_unrelated_overwrite_bits():
+    source = Path("bot/commands/text.py").read_text()
+    assert "overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)" in source
+    assert "overwrite.send_messages = False" in source
+    assert "overwrite.send_messages = None" in source
+    assert "overwrite=overwrite" in source
