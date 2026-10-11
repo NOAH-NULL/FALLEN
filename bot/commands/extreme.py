@@ -159,11 +159,43 @@ class Extreme(commands.Cog):
                 discord.utils.utcnow() + timedelta(minutes=minutes),
             )
         except Exception:
+            self.bot.log.exception(
+                'temporary-ban expiry scheduling failed guild=%s member=%s',
+                ctx.guild.id,
+                member.id,
+            )
             try:
-                await ctx.guild.unban(member, reason='Rollback: temporary-ban scheduling failed')
+                await ctx.guild.unban(
+                    member,
+                    reason='Rollback: temporary-ban scheduling failed',
+                )
             except discord.HTTPException:
-                pass
-            raise
+                self.bot.log.exception(
+                    'temporary-ban rollback failed guild=%s member=%s; manual unban may be required',
+                    ctx.guild.id,
+                    member.id,
+                )
+                try:
+                    await self.bot.extreme.record_security(
+                        ctx.guild.id,
+                        'temporary_ban_rollback_failed',
+                        actor_id=ctx.author.id,
+                        target_id=member.id,
+                        details={'minutes': minutes, 'reason': reason[:400]},
+                    )
+                except Exception:
+                    self.bot.log.exception(
+                        'could not record temporary-ban rollback failure guild=%s member=%s',
+                        ctx.guild.id,
+                        member.id,
+                    )
+                return await ctx.send(
+                    '❌ Expiry scheduling failed and automatic rollback also failed. '
+                    'The member may still be banned; please verify and unban them manually if needed.'
+                )
+            return await ctx.send(
+                '❌ Could not schedule the temporary ban expiry, so the ban was rolled back.'
+            )
         await ctx.send(f'🔨 Temporarily banned **{member}** for **{minutes} minutes**.')
 
     @v16.command(name='ticket-note', description='Add a staff note to the current V16 ticket')
