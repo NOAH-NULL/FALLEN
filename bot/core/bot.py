@@ -345,7 +345,8 @@ class Bot(commands.AutoShardedBot):
         """Recreate a deleted resource, preferring trusted baseline metadata."""
         baseline = {}
         try:
-            snapshot = await self.extreme.snapshot_get(guild.id, "__security_state__")
+            extreme = getattr(self, "extreme", None)
+            snapshot = await extreme.snapshot_get(guild.id, "__security_state__") if extreme else None
             if snapshot and isinstance(snapshot.payload, dict):
                 group = "channels" if action == "channel_delete" else "roles"
                 candidate = (snapshot.payload.get(group) or {}).get(str(resource.id), {})
@@ -355,12 +356,25 @@ class Bot(commands.AutoShardedBot):
             log.exception("security baseline lookup failed guild=%s target=%s", guild.id, getattr(resource, "id", None))
         saved_name = baseline.get("name", resource.name)
         saved_position = baseline.get("position", resource.position)
+        saved_overwrites = getattr(resource, "overwrites", {})
+        if action == "channel_delete" and isinstance(baseline.get("overwrites"), dict):
+            saved_overwrites = {}
+            for target_id, data in baseline["overwrites"].items():
+                try:
+                    target_id = int(target_id)
+                    target = guild.get_role(target_id) or guild.get_member(target_id)
+                    if target is not None and isinstance(data, dict):
+                        allow = discord.Permissions(int(data.get("allow", 0)))
+                        deny = discord.Permissions(int(data.get("deny", 0)))
+                        saved_overwrites[target] = discord.PermissionOverwrite.from_pair(allow, deny)
+                except (TypeError, ValueError):
+                    continue
         try:
             if action == 'channel_delete' and isinstance(resource, discord.CategoryChannel):
                 created = await guild.create_category(
                     saved_name,
                     position=saved_position,
-                    overwrites=resource.overwrites,
+                    overwrites=saved_overwrites,
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
@@ -371,7 +385,7 @@ class Bot(commands.AutoShardedBot):
                     saved_name,
                     category=category,
                     position=saved_position,
-                    overwrites=resource.overwrites,
+                    overwrites=saved_overwrites,
                     bitrate=resource.bitrate,
                     user_limit=resource.user_limit,
                     rtc_region=resource.rtc_region,
@@ -385,7 +399,7 @@ class Bot(commands.AutoShardedBot):
                     saved_name,
                     category=category,
                     position=saved_position,
-                    overwrites=resource.overwrites,
+                    overwrites=saved_overwrites,
                     bitrate=resource.bitrate,
                     user_limit=resource.user_limit,
                     rtc_region=resource.rtc_region,
@@ -411,7 +425,7 @@ class Bot(commands.AutoShardedBot):
                     position=saved_position,
                     nsfw=resource.nsfw,
                     slowmode_delay=resource.slowmode_delay,
-                    overwrites=resource.overwrites,
+                    overwrites=saved_overwrites,
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
