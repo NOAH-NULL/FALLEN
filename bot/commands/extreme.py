@@ -63,8 +63,8 @@ class Extreme(commands.Cog):
     @commands.has_guild_permissions(administrator=True)
     async def snapshot(self, ctx, name: str = 'default'):
         name = name.strip()
-        if not name or len(name) > 64 or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ' for ch in name):
-            return await ctx.send('❌ Snapshot names must be 1–64 characters using letters, numbers, spaces, `_` or `-`.')
+        if not name or len(name) > 64 or name.startswith("__") or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ' for ch in name):
+            return await ctx.send('❌ Snapshot names must be 1–64 characters using letters, numbers, spaces, `_` or `-`; names starting with `__` are reserved for internal recovery data.')
         data=await self.bot.extreme.snapshot(ctx.guild.id)
         await self.bot.extreme.snapshot_save(ctx.guild.id,ctx.author.id,name,data)
         raw=json.dumps(data,indent=2).encode()
