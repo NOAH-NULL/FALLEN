@@ -202,6 +202,7 @@ class Rules(commands.Cog):
             # publish a broken attachment:// reference on a replacement message.
             if panel.get("image_filename") and upload is None:
                 panel["image_filename"] = None
+                embed = self._embed(panel)
             if upload is not None:
                 sent = await channel.send(embed=embed, view=view, file=upload, allowed_mentions=discord.AllowedMentions.none())
             else:
