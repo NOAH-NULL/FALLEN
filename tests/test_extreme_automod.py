@@ -138,3 +138,23 @@ async def test_delete_action_deletes_message():
 
     message.delete.assert_awaited_once()
     message.reply.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_many_pathological_regex_rules_have_a_total_time_budget():
+    import time
+
+    rules = [
+        SimpleNamespace(
+            enabled=True, kind="regex", pattern="^(a|aa)+$", name=f"slow-{index}", action="delete"
+        )
+        for index in range(50)
+    ]
+    runtime = V16Runtime(SimpleNamespace(extreme=FakeExtreme(rules)))
+    message = make_message("a" * 5000 + "!")
+
+    started = time.monotonic()
+    await runtime.custom_rule_matches(message)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
