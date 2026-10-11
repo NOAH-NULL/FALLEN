@@ -172,6 +172,10 @@ class Rules(commands.Cog):
 
     @staticmethod
     def _validate_panel(panel: dict) -> None:
+        if not str(panel.get("title") or "").strip():
+            raise ValueError("The rules panel title cannot be empty.")
+        if not str(panel.get("description") or "").strip():
+            raise ValueError("The rules panel description cannot be empty.")
         Rules._embed(panel)
         rules = panel.get("rules") or []
         if not isinstance(rules, list):
