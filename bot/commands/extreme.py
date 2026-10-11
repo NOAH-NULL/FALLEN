@@ -86,6 +86,39 @@ class Extreme(commands.Cog):
         lines=[f'`#{r.id}` **{r.event_type}** actor={r.actor_id or "system"} target={r.target_id or "-"}' for r in rows]
         await ctx.send('\n'.join(lines))
 
+    @v16.command(name='unlockdown', description='Restore saved channel permissions after lockdown')
+    @commands.has_guild_permissions(administrator=True)
+    async def unlockdown(self, ctx):
+        snapshot = await self.bot.extreme.snapshot_get(ctx.guild.id, '__lockdown__')
+        if not snapshot:
+            return await ctx.send('No saved lockdown recovery snapshot exists.')
+        changed = await self.bot.security_unlockdown(
+            ctx.guild.id,
+            reason=f'Manual lockdown recovery by {ctx.author.id}',
+        )
+        remaining = await self.bot.extreme.snapshot_get(ctx.guild.id, '__lockdown__')
+        if remaining:
+            return await ctx.send(
+                f'⚠️ Restored permissions in {changed} channel(s), but some updates failed. '
+                'The recovery snapshot was kept; run this command again after checking bot permissions.'
+            )
+        await ctx.send(f'✅ Lockdown recovery completed for {changed} channel(s).')
+
+    @v16.command(name='unquarantine', description='Restore a quarantined member\'s saved roles')
+    @commands.has_guild_permissions(administrator=True)
+    async def unquarantine(self, ctx, member: discord.Member):
+        snapshot_name = f'__quarantine__:{member.id}'
+        if not await self.bot.extreme.snapshot_get(ctx.guild.id, snapshot_name):
+            return await ctx.send('No saved quarantine recovery data exists for that member.')
+        restored = await self.bot.restore_quarantined_member(ctx.guild, member.id)
+        remaining = await self.bot.extreme.snapshot_get(ctx.guild.id, snapshot_name)
+        if remaining:
+            return await ctx.send(
+                f'⚠️ Restored {restored} role(s), but recovery is incomplete. '
+                'The quarantine role and recovery snapshot were kept; check role hierarchy and bot permissions.'
+            )
+        await ctx.send(f'✅ Quarantine recovery completed; restored {restored} role(s).')
+
     @v16.command(name='automod-rule', description='Create/update a regex or domain AutoMod rule')
     @commands.has_guild_permissions(manage_guild=True)
     async def automod_rule(self, ctx, name: str, kind: str, pattern: str, action: str='delete'):
