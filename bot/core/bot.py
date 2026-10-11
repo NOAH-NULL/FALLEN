@@ -553,7 +553,16 @@ class Bot(commands.AutoShardedBot):
         if await self.extreme.enabled(guild.id, "anti_role_delete"):
             await self._observe_destructive_action(guild, actor, "role_delete", role.id, role)
 
-    async def on_guild_join(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_join').inc(); await self.guild_config.invalidate(guild.id)
+    async def on_guild_join(self, guild):
+        GUILDS.set(len(self.guilds))
+        EVENTS.labels('guild_join').inc()
+        await self.guild_config.invalidate(guild.id)
+        # Existing guilds get a baseline in on_ready; guilds added while the
+        # bot is already online need one here or anti-nuke recovery fails closed.
+        try:
+            await self.snapshot_security_state(guild, guild.me.id if guild.me else 0)
+        except Exception:
+            log.exception('security baseline snapshot failed for newly joined guild=%s', guild.id)
     async def on_guild_remove(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_remove').inc()
     # Gateway callbacks are intentionally O(1): enqueue and return immediately.
     async def on_member_join(self, m):
