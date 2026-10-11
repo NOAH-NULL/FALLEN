@@ -314,3 +314,60 @@ async def test_plain_text_greeting_mode_sends_message_content():
     assert delivered is True
     assert worker._send_public.await_args.kwargs["content"] == "Welcome <@7>!"
     assert worker._send_public.await_args.kwargs["embed"] is None
+
+
+@pytest.mark.asyncio
+async def test_greeting_reset_uses_existing_columns_and_json_settings():
+    config = SimpleNamespace(
+        get=AsyncMock(return_value={"welcome_settings": {"custom_option": "keep"}}),
+        update=AsyncMock(),
+    )
+    cog = Greeting(SimpleNamespace(guild_config=config))
+    interaction = SimpleNamespace(
+        guild_id=42,
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+
+    await Greeting.reset.callback(cog, interaction, "goodbye")
+
+    kwargs = config.update.await_args.kwargs
+    assert config.update.await_args.args == (42,)
+    assert kwargs["goodbye_message"] == "Goodbye {name}!"
+    assert kwargs["goodbye_embed_title"] == "Goodbye!"
+    assert kwargs["goodbye_embed_color"] == 0x95A5A6
+    assert kwargs["welcome_settings"]["custom_option"] == "keep"
+    assert kwargs["welcome_settings"]["goodbye_enabled"] is True
+    assert kwargs["welcome_settings"]["goodbye_image_url"] == ""
+    assert kwargs["welcome_settings"]["goodbye_footer_text"] == "User ID: {user_id}"
+
+
+def test_worker_uses_saved_custom_image_and_footer_options():
+    guild = SimpleNamespace(
+        id=42, name="Test Server", icon=None, premium_subscription_count=0,
+        get_member=MagicMock(return_value=None),
+    )
+    member = SimpleNamespace(
+        id=7, guild=guild, mention="<@7>", display_name="Member", name="member",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc), joined_at=None,
+        display_avatar=SimpleNamespace(url="https://example.com/avatar.png"),
+    )
+    worker = GreetingWorker(SimpleNamespace())
+    embed = worker._build_embed(
+        {"welcome_embed_enabled": True, "welcome_embed_title": "Hello", "welcome_embed_description": "Welcome"},
+        {
+            "welcome_image_url": "https://example.com/custom.gif",
+            "welcome_footer_text": "User {user_id} on {server}",
+            "welcome_show_thumbnail": False,
+            "welcome_show_footer": True,
+            "show_details": False,
+            "show_joined_at": False,
+            "show_account_created": False,
+            "show_inviter": False,
+            "show_risk": False,
+        },
+        member, "welcome", 3, None, 0, "welcome.png",
+    )
+
+    assert embed.image.url == "https://example.com/custom.gif"
+    assert embed.footer.text == "User 7 on Test Server"
+    assert embed.thumbnail.url is None
