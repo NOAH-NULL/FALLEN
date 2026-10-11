@@ -1,3 +1,10 @@
+import asyncio
+import logging
+import secrets
+import signal
+from bot.core.fencing import FenceContext
+
+
 def resolve_shard_ids(configured_ids=None, configured_count=None, recommended_count=None):
     """Return the exact shard IDs this process must lease before connecting."""
     if configured_ids is not None:
@@ -16,12 +23,6 @@ def resolve_shard_ids(configured_ids=None, configured_count=None, recommended_co
         raise ValueError("Shard count must be at least 1")
     return list(range(count))
 
-
-import asyncio
-import logging
-import secrets
-import signal
-from bot.core.fencing import FenceContext
 
 log = logging.getLogger('bot.shard_lease')
 
