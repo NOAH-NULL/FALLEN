@@ -355,9 +355,21 @@ class ExtremeService:
         async with self.db.session() as s:
             await s.execute(delete(ConfigSnapshot).where(ConfigSnapshot.guild_id==guild_id,ConfigSnapshot.name==name))
             await s.commit()
-    async def ticket_create(self,guild_id,channel_id,opener_id,category='general'):
+    async def ticket_create(self, guild_id, channel_id, opener_id, category='general'):
+        """Create one durable ticket row per channel, safely handling duplicate clicks."""
         async with self.db.session() as s:
-            row=Ticket(guild_id=guild_id,channel_id=channel_id,opener_id=opener_id,category=category); s.add(row); await s.commit(); return row
+            statement = pg_insert(Ticket).values(
+                guild_id=guild_id,
+                channel_id=channel_id,
+                opener_id=opener_id,
+                category=category,
+            ).on_conflict_do_nothing(index_elements=[Ticket.channel_id])
+            await s.execute(statement)
+            await s.commit()
+            result = await s.execute(
+                select(Ticket).where(Ticket.channel_id == channel_id)
+            )
+            return result.scalar_one_or_none()
     async def ticket_get(self,channel_id):
         async with self.db.session() as s: return (await s.execute(select(Ticket).where(Ticket.channel_id==channel_id))).scalar_one_or_none()
     async def ticket_update(self,channel_id,**changes):
