@@ -317,6 +317,7 @@ class GreetingWorker:
                 permissions = channel.permissions_for(me)
                 missing = [
                     name for name, ok in (
+                        ("View Channel", permissions.view_channel),
                         ("Send Messages", permissions.send_messages),
                         ("Attach Files", permissions.attach_files),
                         ("Embed Links", permissions.embed_links if require_embed else True),
