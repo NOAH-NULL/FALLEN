@@ -1,4 +1,5 @@
 import copy
+from collections import deque
 from types import SimpleNamespace
 
 import discord
@@ -120,3 +121,21 @@ async def test_legacy_lockdown_snapshot_restores_send_messages_without_erasing_o
 
     assert channel.overwrite.send_messages is True
     assert channel.overwrite.view_channel is True
+
+
+def test_stale_anti_nuke_actor_counters_are_pruned():
+    stale_key = (123, 111, "channel_delete")
+    active_key = (123, 222, "role_delete")
+    bot = SimpleNamespace(
+        _last_destructive_prune=0.0,
+        _destructive_actions={
+            stale_key: deque([1.0, 2.0]),
+            active_key: deque([95.0]),
+        },
+    )
+
+    Bot._prune_destructive_actions(bot, now=100.0)
+
+    assert stale_key not in bot._destructive_actions
+    assert list(bot._destructive_actions[active_key]) == [95.0]
+    assert bot._last_destructive_prune == 100.0
