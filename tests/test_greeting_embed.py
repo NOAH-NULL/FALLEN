@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import discord
 from PIL import Image
 
 from bot.commands.greeting import Greeting
