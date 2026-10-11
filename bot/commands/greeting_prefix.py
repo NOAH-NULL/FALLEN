@@ -260,7 +260,9 @@ class GreetingPrefix(commands.Cog):
         if missing:
             return await ctx.send(f'❌ I am missing: **{", ".join(missing)}** in {ctx.channel.mention}.')
         try:
-            delivered = await self.bot.greeting_worker.deliver(ctx.author, kind, force_channel=ctx.channel)
+            delivered = await self.bot.greeting_worker.deliver(
+                ctx.author, kind, force_channel=ctx.channel, test_mode=True
+            )
             if delivered is False:
                 return await ctx.send('❌ The greeting worker declined this test delivery.')
         except ValueError as exc:
