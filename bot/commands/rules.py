@@ -131,7 +131,7 @@ class Rules(commands.Cog):
     async def _reply(self, interaction: discord.Interaction, content, **kwargs):
         if interaction.response.is_done():
             return await interaction.followup.send(content, **kwargs)
-        return await interaction.response.send_message(content, **kwargs)
+        return await self._reply(interaction, content, **kwargs)
 
     async def _panel(self, guild_id: int) -> dict | None:
         settings = await self.bot.welcome_engine.get(guild_id)
@@ -251,7 +251,7 @@ class Rules(commands.Cog):
     async def _require_panel(self, interaction: discord.Interaction) -> dict | None:
         panel = await self._panel(interaction.guild_id)
         if not panel:
-            await interaction.response.send_message(
+            await self._reply(interaction, 
                 "Set up the panel first with /rules setup.", ephemeral=True
             )
             return None
@@ -270,7 +270,7 @@ class Rules(commands.Cog):
         if interaction.response.is_done():
             await interaction.followup.send("❌ " + message, ephemeral=True)
         else:
-            await interaction.response.send_message("❌ " + message, ephemeral=True)
+            await self._reply(interaction, "❌ " + message, ephemeral=True)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -326,7 +326,7 @@ class Rules(commands.Cog):
                         await old_message.delete(reason="FALLEN rules panel replaced by an administrator")
                     except (discord.NotFound, discord.Forbidden):
                         pass
-            await interaction.response.send_message(
+            await self._reply(interaction, 
                 f"Rules panel created in {channel.mention}. Add rules with /rules add and configure all four buttons with /rules button.",
                 ephemeral=True,
             )
@@ -347,7 +347,7 @@ class Rules(commands.Cog):
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message(f"Rule {len(panel['rules'])} added and the panel updated.", ephemeral=True)
+            await self._reply(interaction, f"Rule {len(panel['rules'])} added and the panel updated.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -361,9 +361,9 @@ class Rules(commands.Cog):
             return
         rules = panel.get("rules") or []
         if number > len(rules):
-            return await interaction.response.send_message("That rule number does not exist.", ephemeral=True)
+            return await self._reply(interaction, "That rule number does not exist.", ephemeral=True)
         if title is None and text is None:
-            return await interaction.response.send_message("Provide a new title, new text, or both.", ephemeral=True)
+            return await self._reply(interaction, "Provide a new title, new text, or both.", ephemeral=True)
         if title is not None:
             rules[number - 1]["title"] = title.strip()
         if text is not None:
@@ -373,7 +373,7 @@ class Rules(commands.Cog):
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message(f"Rule {number} edited and the panel updated.", ephemeral=True)
+            await self._reply(interaction, f"Rule {number} edited and the panel updated.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -387,14 +387,14 @@ class Rules(commands.Cog):
             return
         rules = panel.get("rules") or []
         if number > len(rules):
-            return await interaction.response.send_message("That rule number does not exist.", ephemeral=True)
+            return await self._reply(interaction, "That rule number does not exist.", ephemeral=True)
         removed = rules.pop(number - 1)
         try:
             self._validate_panel(panel)
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message(f"Removed rule: {removed['title']}.", ephemeral=True)
+            await self._reply(interaction, f"Removed rule: {removed['title']}.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -412,24 +412,24 @@ class Rules(commands.Cog):
         if not label.strip():
             return await self._reply(interaction, "Button label cannot be blank.", ephemeral=True)
         if role.is_default() or role.managed:
-            return await interaction.response.send_message("Choose a normal, assignable server role.", ephemeral=True)
+            return await self._reply(interaction, "Choose a normal, assignable server role.", ephemeral=True)
         if any(getattr(role.permissions, name, False) for name in DANGEROUS_ROLE_PERMISSIONS):
-            return await interaction.response.send_message("That role has elevated permissions and cannot be self-assigned.", ephemeral=True)
+            return await self._reply(interaction, "That role has elevated permissions and cannot be self-assigned.", ephemeral=True)
         if me is None or not me.guild_permissions.manage_roles or role >= me.top_role:
-            return await interaction.response.send_message("FALLEN needs Manage Roles and a top role above the selected role.", ephemeral=True)
+            return await self._reply(interaction, "FALLEN needs Manage Roles and a top role above the selected role.", ephemeral=True)
         if not isinstance(actor, discord.Member) or (guild.owner_id != actor.id and role >= actor.top_role):
-            return await interaction.response.send_message("You can only configure roles below your own highest role.", ephemeral=True)
+            return await self._reply(interaction, "You can only configure roles below your own highest role.", ephemeral=True)
         buttons = panel.setdefault("buttons", [])
         while len(buttons) < 4:
             buttons.append({"label": f"Button {len(buttons) + 1}", "role_id": None})
         if any(index != slot - 1 and item.get("role_id") == role.id for index, item in enumerate(buttons)):
-            return await interaction.response.send_message("Each access button must use a different role.", ephemeral=True)
+            return await self._reply(interaction, "Each access button must use a different role.", ephemeral=True)
         buttons[slot - 1] = {"label": label.strip(), "role_id": role.id}
         try:
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(guild, panel)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message(f"Button {slot} is now **{label.strip()}** for {role.mention}. Make sure the role has access only to the intended channels.", ephemeral=True)
+            await self._reply(interaction, f"Button {slot} is now **{label.strip()}** for {role.mention}. Make sure the role has access only to the intended channels.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -447,7 +447,7 @@ class Rules(commands.Cog):
             await self._sync_panel(interaction.guild, panel)
             await self._save_panel(interaction.guild_id, panel)
             target = interaction.guild.get_channel(int(panel["channel_id"]))
-            await interaction.response.send_message(f"Rules panel published or refreshed in {target.mention}.", ephemeral=True)
+            await self._reply(interaction, f"Rules panel published or refreshed in {target.mention}.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -460,7 +460,7 @@ class Rules(commands.Cog):
         if panel is None:
             return
         if title is None and description is None:
-            return await interaction.response.send_message("Provide a new title, a new description, or both.", ephemeral=True)
+            return await self._reply(interaction, "Provide a new title, a new description, or both.", ephemeral=True)
         if title is not None:
             panel["title"] = title.strip()
         if description is not None:
@@ -470,7 +470,7 @@ class Rules(commands.Cog):
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message("Rules panel title/description updated.", ephemeral=True)
+            await self._reply(interaction, "Rules panel title/description updated.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -486,9 +486,9 @@ class Rules(commands.Cog):
         suffix = PurePath(attachment.filename).suffix.lower()
         allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
         if not (content_type.startswith("image/") or suffix in allowed) or suffix not in allowed:
-            return await interaction.response.send_message("Upload a PNG, JPG, WEBP, or GIF image.", ephemeral=True)
+            return await self._reply(interaction, "Upload a PNG, JPG, WEBP, or GIF image.", ephemeral=True)
         if attachment.size > int(interaction.guild.filesize_limit):
-            return await interaction.response.send_message(f"This server's upload limit is {interaction.guild.filesize_limit // (1024 * 1024)} MB.", ephemeral=True)
+            return await self._reply(interaction, f"This server's upload limit is {interaction.guild.filesize_limit // (1024 * 1024)} MB.", ephemeral=True)
         try:
             data = await attachment.read()
             filename = "rules-image" + suffix
@@ -497,7 +497,7 @@ class Rules(commands.Cog):
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel, upload=discord.File(BytesIO(data), filename=filename))
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message("Image/GIF attached and the panel updated.", ephemeral=True)
+            await self._reply(interaction, "Image/GIF attached and the panel updated.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -511,14 +511,14 @@ class Rules(commands.Cog):
             return
         parsed = urlparse(url.strip())
         if parsed.scheme != "https" or not parsed.netloc:
-            return await interaction.response.send_message("Use a valid HTTPS image/GIF URL.", ephemeral=True)
+            return await self._reply(interaction, "Use a valid HTTPS image/GIF URL.", ephemeral=True)
         panel["image_url"] = url.strip()
         panel["image_filename"] = None
         try:
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel, clear_attachments=True)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message("Rules image URL saved and the panel updated.", ephemeral=True)
+            await self._reply(interaction, "Rules image URL saved and the panel updated.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -536,7 +536,7 @@ class Rules(commands.Cog):
             await self._save_panel(interaction.guild_id, panel)
             await self._sync_panel(interaction.guild, panel, clear_attachments=True)
             await self._save_panel(interaction.guild_id, panel)
-            await interaction.response.send_message("Rules image removed.", ephemeral=True)
+            await self._reply(interaction, "Rules image removed.", ephemeral=True)
         except Exception as exc:
             await self._report_error(interaction, exc)
 
@@ -547,7 +547,7 @@ class Rules(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         panel = await self._panel(interaction.guild_id)
         if not panel:
-            return await interaction.response.send_message("No rules panel is configured. Use /rules setup.", ephemeral=True)
+            return await self._reply(interaction, "No rules panel is configured. Use /rules setup.", ephemeral=True)
         rules = panel.get("rules") or []
         buttons = panel.get("buttons") or []
         lines = [
@@ -560,7 +560,7 @@ class Rules(commands.Cog):
             item = buttons[index] if index < len(buttons) else {}
             role_id = item.get("role_id")
             lines.append(f"Button {index + 1}: {item.get('label') or 'unlabelled'} → <@&{role_id}>" if role_id else f"Button {index + 1}: not configured")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        await self._reply(interaction, "\n".join(lines), ephemeral=True)
 
 
 async def setup(bot):
