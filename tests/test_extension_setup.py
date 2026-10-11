@@ -20,4 +20,5 @@ async def test_all_registered_extensions_load_together():
         assert bot.tree.get_commands(), "Expected slash commands to be registered"
         assert bot.commands, "Expected prefix commands to be registered"
     finally:
-        await bot.close()
+        await bot.cache.close()
+        await bot.db.close()
