@@ -25,4 +25,4 @@ jobs:
       - name: Compile source and tests
         run: python -m compileall -q bot tests
       - name: Run focused rules and greeting tests
-        run: pytest -q tests/test_rules_panel.py tests/test_greeting_embed.py tests/test_advanced_greeting.py
+        run: pytest -q tests/test_rules_panel.py tests/test_rules_panel_stress.py tests/test_greeting_embed.py tests/test_advanced_greeting.py
