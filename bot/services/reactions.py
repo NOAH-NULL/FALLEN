@@ -42,7 +42,6 @@ class ReactionGifService:
         'pout': 'pout',
         'blush': 'blush',
         'uwu': 'smile',
-        'fuck': 'fuck',
         'kiss': 'kiss',
         'flirt': 'flirt',
         'attack': 'punch',
