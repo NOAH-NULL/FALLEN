@@ -68,9 +68,9 @@ async def test_inviteleaderboard_handles_empty_server():
 
     await Invites.inviteleaderboard.callback(Invites(bot), interaction)
 
-    interaction.response.send_message.assert_awaited_once_with(
-        "No invite joins have been tracked yet."
-    )
+    args = interaction.response.send_message.await_args
+    assert args.args == ("No invite joins have been tracked yet.",)
+    assert args.kwargs["ephemeral"] is False
 
 
 @pytest.mark.asyncio
