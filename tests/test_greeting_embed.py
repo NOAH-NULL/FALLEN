@@ -52,7 +52,7 @@ def test_greeting_worker_sends_embed_with_banner_attachment():
     assert "discord.Embed" in src
     assert "attachment://{filename}" in src
     assert "embed=embed" in src
-    assert "file=discord.File(buf,filename=filename)" in src
+    assert "file=discord.File(BytesIO(rendered), filename=filename)" in src
 
 
 @pytest.mark.asyncio
