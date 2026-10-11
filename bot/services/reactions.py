@@ -117,7 +117,7 @@ class ReactionGifService:
             }
             async with self._session.get(self.GIPHY_URL, params=params) as response:
                 if response.status != 200:
-                    return []
+                    raise RuntimeError(f'Giphy HTTP status {response.status}')
                 data = await response.json()
                 return [
                     item['images']['original']['url']
@@ -141,7 +141,7 @@ class ReactionGifService:
             }
             async with self._session.get(self.TENOR_URL, params=params) as response:
                 if response.status != 200:
-                    return []
+                    raise RuntimeError(f'Tenor HTTP status {response.status}')
                 data = await response.json()
                 return [
                     result['media_formats']['gif']['url']
@@ -158,7 +158,7 @@ class ReactionGifService:
         try:
             async with self._session.get(self.OTAKU_GIFS_URL, params={'reaction': action}) as response:
                 if response.status != 200:
-                    return []
+                    raise RuntimeError(f'OtakuGIFs HTTP status {response.status}')
                 data = await response.json()
                 url = data.get('url')
                 return [url] if url else []
