@@ -66,10 +66,13 @@ class ExtremeService:
         out = dict(DEFAULTS)
         # Ignore stale database values for catalog-only features until their
         # behavior exists and has dedicated tests.
+        # Treat only actual JSON booleans as feature flags. In Python,
+        # bool("false") is True, which could accidentally enable security
+        # controls from malformed or legacy configuration.
         out.update({
-            key: bool(value)
+            key: value
             for key, value in stored.items()
-            if key in IMPLEMENTED_FEATURES
+            if key in IMPLEMENTED_FEATURES and isinstance(value, bool)
         })
         self._settings_cache[guild_id] = (now + self._settings_ttl, dict(out))
         return out
@@ -77,7 +80,9 @@ class ExtremeService:
         key = key.strip().lower()
         if key not in ALL_FEATURES:
             raise ValueError(f"Unknown V16 feature: {key}")
-        enabled = bool(value)
+        if not isinstance(value, bool):
+            raise ValueError("Feature state must be a boolean")
+        enabled = value
         if key not in IMPLEMENTED_FEATURES and enabled:
             raise ValueError(
                 f"V16 feature '{key}' is catalog-only and is not implemented yet"
@@ -101,7 +106,9 @@ class ExtremeService:
         for key, value in stored.items():
             if key not in ALL_FEATURES:
                 errors.append(f"Unknown stored feature: {key}")
-            elif key not in IMPLEMENTED_FEATURES and bool(value):
+            elif not isinstance(value, bool):
+                errors.append(f"Stored feature '{key}' must be a boolean; its value is ignored")
+            elif key not in IMPLEMENTED_FEATURES and value:
                 errors.append(
                     f"Catalog-only feature '{key}' is stored as enabled but is not implemented; its value is ignored"
                 )
