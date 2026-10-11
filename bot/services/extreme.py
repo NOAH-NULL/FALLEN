@@ -75,7 +75,8 @@ class ExtremeService:
         key = key.strip().lower()
         if key not in ALL_FEATURES:
             raise ValueError(f"Unknown V16 feature: {key}")
-        if key not in IMPLEMENTED_FEATURES:
+        enabled = bool(value)
+        if key not in IMPLEMENTED_FEATURES and enabled:
             raise ValueError(
                 f"V16 feature '{key}' is catalog-only and is not implemented yet"
             )
@@ -83,9 +84,9 @@ class ExtremeService:
             row = await s.get(GuildConfig, guild_id, with_for_update=True)
             if not row:
                 row = GuildConfig(guild_id=guild_id, extreme_settings={}); s.add(row); await s.flush()
-            data = dict(row.extreme_settings or {}); data[key] = bool(value); row.extreme_settings = data; await s.commit()
+            data = dict(row.extreme_settings or {}); data[key] = enabled; row.extreme_settings = data; await s.commit()
         self._settings_cache.pop(guild_id, None)
-        return bool(value)
+        return enabled
     async def enabled(self, guild_id: int, key: str) -> bool:
         return bool((await self.get(guild_id)).get(key, False))
     async def snapshot(self, guild_id: int) -> dict:
