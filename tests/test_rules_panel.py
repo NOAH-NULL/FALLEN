@@ -1,4 +1,6 @@
+import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import discord
 
@@ -34,6 +36,19 @@ def test_rules_panel_has_standard_companion_embed():
     assert "**Need help?**" in embed.description
     assert embed.footer.text == "FALLEN • Server information"
 
+
+
+def test_rules_reply_sends_initial_response_without_recursion():
+    interaction = SimpleNamespace(
+        response=SimpleNamespace(is_done=lambda: False, send_message=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
+    )
+    rules = Rules(bot=None)
+
+    asyncio.run(rules._reply(interaction, "ok", ephemeral=True))
+
+    interaction.response.send_message.assert_awaited_once_with("ok", ephemeral=True)
+    interaction.followup.send.assert_not_awaited()
 
 def test_rules_panel_has_exactly_four_buttons_and_unconfigured_slots_are_disabled():
     panel = {
