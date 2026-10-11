@@ -1,15 +1,16 @@
 """Exercise extension setup and command registration without connecting to Discord."""
 
-import discord
 import pytest
-from discord.ext import commands
 
-from bot.core.bot import EXTENSIONS
+from bot.core.bot import Bot, EXTENSIONS
+from bot.core.config import Settings
 
 
 @pytest.mark.asyncio
 async def test_all_registered_extensions_load_together():
-    bot = commands.Bot(command_prefix=",", intents=discord.Intents.none(), help_command=None)
+    # Use the real bot constructor so extension setup sees its expected services.
+    # No login/start call is made, so this test does not connect to Discord.
+    bot = Bot(Settings(token="test-token"))
     try:
         loaded = []
         for extension in EXTENSIONS:
