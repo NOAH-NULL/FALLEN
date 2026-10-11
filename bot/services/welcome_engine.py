@@ -67,7 +67,8 @@ class WelcomeEngine:
                     "url": str(legacy.get("welcome_button_url")).strip(),
                 }]
 
-        out["new_account_days"] = max(0, min(3650, int(out.get("new_account_days", 7) or 7)))
+        configured_age_days = out.get("new_account_days", 7)
+        out["new_account_days"] = max(0, min(3650, int(7 if configured_age_days is None else configured_age_days)))
         out["retry_attempts"] = max(0, min(4, int(out.get("retry_attempts", 2) or 0)))
         out["dm_retry"] = max(0, min(2, int(out.get("dm_retry", 1) or 0)))
         out["dedupe_seconds"] = max(0, min(600, float(out.get("dedupe_seconds", 90) or 0)))
