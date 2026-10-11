@@ -8,7 +8,7 @@ from bot.commands.fun import Fun, SAFE_ACTIONS
 def test_hybrid_commands_are_available_in_both_prefix_and_slash_surfaces():
     cog = Fun(SimpleNamespace(reactions=SimpleNamespace(get=AsyncMock(return_value=None))))
     prefix_names = {command.name for command in cog.get_commands()}
-    slash_names = {command.name for command in cog.get_app_commands()}
+    slash_names = {command.name for command in cog.get_commands() if getattr(command, 'app_command', None) is not None}
     expected = {"hug", "highfive", "pat", "poke", "bonk", "wave", "dance", "smile", "cry", "shrug", "sleep", "boop", "tickle", "punch"}
     assert expected <= prefix_names
     assert expected <= slash_names
