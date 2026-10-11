@@ -113,8 +113,15 @@ class ExtremeService:
         async with self.db.session() as s:
             return list((await s.execute(select(SecurityEvent).where(SecurityEvent.guild_id==guild_id).order_by(SecurityEvent.id.desc()).limit(limit))).scalars())
     async def schedule(self,guild_id,target_id,action,run_at,payload=None):
+        action = str(action).strip().lower()
+        if action not in {"ban", "timeout"}:
+            raise ValueError("Scheduled action must be 'ban' or 'timeout'")
+        if not isinstance(run_at, datetime) or run_at.tzinfo is None or run_at.utcoffset() is None:
+            raise ValueError("Scheduled action time must be timezone-aware")
+        if int(guild_id) <= 0 or int(target_id) <= 0:
+            raise ValueError("Scheduled action guild and target IDs must be positive")
         async with self.db.session() as s:
-            row=ScheduledAction(guild_id=guild_id,target_id=target_id,action=action,run_at=run_at,payload=payload or {}); s.add(row); await s.commit(); return row.id
+            row=ScheduledAction(guild_id=int(guild_id),target_id=int(target_id),action=action,run_at=run_at,payload=payload or {}); s.add(row); await s.commit(); return row.id
     async def due_actions(self,now=None,limit=100):
         """Atomically claim due actions for one scheduler instance.
 
