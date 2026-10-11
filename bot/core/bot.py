@@ -294,13 +294,68 @@ class Bot(commands.AutoShardedBot):
         return restored
 
     async def restore_deleted_resource(self, guild, resource, action):
-        """Best-effort recreation of a freshly deleted channel/role."""
+        """Best-effort recreation of a deleted resource without changing its type."""
         try:
-            if action == 'channel_delete' and hasattr(resource, 'name'):
-                category = guild.get_channel(resource.category_id) if getattr(resource, 'category_id', None) else None
-                overwrites = resource.overwrites
-                created = await guild.create_text_channel(resource.name, category=category, position=resource.position, overwrites=overwrites, reason='Fallen anti-nuke restoration')
+            if action == 'channel_delete' and isinstance(resource, discord.CategoryChannel):
+                created = await guild.create_category(
+                    resource.name,
+                    position=resource.position,
+                    overwrites=resource.overwrites,
+                    reason='Fallen anti-nuke restoration',
+                )
                 return created.id
+
+            if action == 'channel_delete' and isinstance(resource, discord.StageChannel):
+                category = guild.get_channel(resource.category_id) if resource.category_id else None
+                created = await guild.create_stage_channel(
+                    resource.name,
+                    category=category,
+                    position=resource.position,
+                    overwrites=resource.overwrites,
+                    bitrate=resource.bitrate,
+                    user_limit=resource.user_limit,
+                    rtc_region=resource.rtc_region,
+                    reason='Fallen anti-nuke restoration',
+                )
+                return created.id
+
+            if action == 'channel_delete' and isinstance(resource, discord.VoiceChannel):
+                category = guild.get_channel(resource.category_id) if resource.category_id else None
+                created = await guild.create_voice_channel(
+                    resource.name,
+                    category=category,
+                    position=resource.position,
+                    overwrites=resource.overwrites,
+                    bitrate=resource.bitrate,
+                    user_limit=resource.user_limit,
+                    rtc_region=resource.rtc_region,
+                    reason='Fallen anti-nuke restoration',
+                )
+                return created.id
+
+            if action == 'channel_delete' and isinstance(resource, discord.TextChannel):
+                # Announcement channels need their channel type preserved; this
+                # public API cannot reliably recreate them as announcements.
+                if resource.is_news():
+                    log.warning(
+                        'anti-nuke could not recreate announcement channel guild=%s channel=%s',
+                        guild.id,
+                        resource.id,
+                    )
+                    return None
+                category = guild.get_channel(resource.category_id) if resource.category_id else None
+                created = await guild.create_text_channel(
+                    resource.name,
+                    category=category,
+                    topic=resource.topic,
+                    position=resource.position,
+                    nsfw=resource.nsfw,
+                    slowmode_delay=resource.slowmode_delay,
+                    overwrites=resource.overwrites,
+                    reason='Fallen anti-nuke restoration',
+                )
+                return created.id
+
             if action == 'role_delete' and hasattr(resource, 'name'):
                 role = await guild.create_role(name=resource.name, permissions=resource.permissions, colour=resource.colour, hoist=resource.hoist, mentionable=resource.mentionable, reason='Fallen anti-nuke restoration')
                 try:
@@ -309,7 +364,20 @@ class Bot(commands.AutoShardedBot):
                     pass
                 return role.id
         except discord.HTTPException:
+            log.exception(
+                'anti-nuke resource recreation failed guild=%s action=%s target=%s',
+                getattr(guild, 'id', None),
+                action,
+                getattr(resource, 'id', None),
+            )
             return None
+        if action == 'channel_delete':
+            log.warning(
+                'anti-nuke skipped unsupported channel type guild=%s channel=%s type=%s',
+                getattr(guild, 'id', None),
+                getattr(resource, 'id', None),
+                type(resource).__name__,
+            )
         return None
 
     async def _observe_destructive_action(self, guild, actor_id: int | None, action: str, target_id: int | None = None, resource=None):
