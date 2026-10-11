@@ -43,7 +43,6 @@ class ReactionGifService:
         'blush': 'blush',
         'uwu': 'smile',
         'kiss': 'kiss',
-        'fuck': 'fuck',  # Mapped to a safe supported API reaction so custom commands won't fail
         'flirt': 'flirt',
         'attack': 'punch',
         'shoot': 'punch',
