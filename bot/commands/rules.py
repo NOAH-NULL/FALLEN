@@ -128,6 +128,11 @@ class Rules(commands.Cog):
         self.bot = bot
         self._registered_messages: set[int] = set()
 
+    async def _reply(self, interaction: discord.Interaction, content, **kwargs):
+        if interaction.response.is_done():
+            return await interaction.followup.send(content, **kwargs)
+        return await self._reply(interaction,content, **kwargs)
+
     async def _panel(self, guild_id: int) -> dict | None:
         settings = await self.bot.welcome_engine.get(guild_id)
         panel = settings.get("rules_panel")
@@ -264,6 +269,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setup_panel(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 256], description: app_commands.Range[str, 1, 3000], channel: discord.TextChannel):
+        await interaction.response.defer(ephemeral=True)
         previous = await self._panel(interaction.guild_id)
         reuse_message_id = (
             previous.get("message_id")
@@ -309,6 +315,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def add_rule(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 100], text: app_commands.Range[str, 1, 1000]):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -326,6 +333,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def edit_rule(self, interaction: discord.Interaction, number: app_commands.Range[int, 1, 1000], title: app_commands.Range[str, 1, 100] | None = None, text: app_commands.Range[str, 1, 1000] | None = None):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -351,6 +359,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def remove_rule(self, interaction: discord.Interaction, number: app_commands.Range[int, 1, 1000]):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -371,6 +380,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def configure_button(self, interaction: discord.Interaction, slot: app_commands.Range[int, 1, 4], label: app_commands.Range[str, 1, 80], role: discord.Role):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -403,6 +413,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def publish_panel(self, interaction: discord.Interaction, channel: discord.TextChannel | None = None):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -420,6 +431,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def edit_panel(self, interaction: discord.Interaction, title: app_commands.Range[str, 1, 256] | None = None, description: app_commands.Range[str, 1, 3000] | None = None):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -442,6 +454,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_image(self, interaction: discord.Interaction, attachment: discord.Attachment):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -468,6 +481,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def set_image_url(self, interaction: discord.Interaction, url: app_commands.Range[str, 1, 1024]):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -488,6 +502,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def remove_image(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._require_panel(interaction)
         if panel is None:
             return
@@ -505,6 +520,7 @@ class Rules(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def panel_status(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
         panel = await self._panel(interaction.guild_id)
         if not panel:
             return await interaction.response.send_message("No rules panel is configured. Use /rules setup.", ephemeral=True)
