@@ -490,12 +490,26 @@ class Bot(commands.AutoShardedBot):
     async def on_guild_join(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_join').inc(); await self.guild_config.invalidate(guild.id)
     async def on_guild_remove(self,guild): GUILDS.set(len(self.guilds)); EVENTS.labels('guild_remove').inc()
     # Gateway callbacks are intentionally O(1): enqueue and return immediately.
-    async def on_member_join(self,m): self.gateway_queue.put_nowait('member_join',m,critical=True)
-    async def on_member_remove(self,m): self.gateway_queue.put_nowait('member_remove',m)
-    async def on_message(self,message):
-        if message.author.bot or not message.guild:return
+    async def on_member_join(self, m):
+        if not self.gateway_queue.put_nowait('member_join', m, critical=True):
+            log.critical('critical member_join event dropped because gateway queue is full guild=%s member=%s', m.guild.id, m.id)
+
+    async def on_member_remove(self, m):
+        if not self.gateway_queue.put_nowait('member_remove', m):
+            log.warning('member_remove event dropped because gateway queue is full guild=%s member=%s', m.guild.id, m.id)
+
+    async def on_message(self, message):
+        if message.author.bot or not message.guild:
+            return
         critical = message.content.startswith(self.command_prefix)
-        self.gateway_queue.put_nowait('message',message,critical=critical)
+        accepted = self.gateway_queue.put_nowait('message', message, critical=critical)
+        if not accepted and critical:
+            log.error(
+                'prefix command message dropped because critical gateway queue is full guild=%s channel=%s message=%s',
+                message.guild.id,
+                message.channel.id,
+                message.id,
+            )
     async def process_member_join(self,m):
         legacy_raid = await self.antiraid.observe(m.guild.id)
         actions = await self.v16.member_join(m)
