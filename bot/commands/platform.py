@@ -7,6 +7,7 @@ class Platform(commands.Cog):
     def __init__(self,bot): self.bot=bot
     @app_commands.command(name='case',description='View moderation cases for a member')
     @app_commands.guild_only()
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.describe(member='Member')
     async def case(self,interaction:discord.Interaction,member:discord.Member):
         rows=await self.bot.platform.cases(interaction.guild.id,member.id)
