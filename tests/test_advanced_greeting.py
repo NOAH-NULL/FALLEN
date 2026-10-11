@@ -99,3 +99,24 @@ def test_zero_new_account_threshold_really_disables_new_account_flag():
 
     assert settings["new_account_days"] == 0
     assert engine.risk(member, settings)["is_new"] is False
+
+
+def test_partial_advanced_settings_preserve_legacy_welcome_options():
+    settings = WelcomeEngine.normalize(
+        {"welcome_image_url": "https://example.com/banner.gif"},
+        {
+            "welcome_dm_enabled": True,
+            "welcome_show_details": False,
+            "welcome_button_enabled": True,
+            "welcome_button_label": "Read rules",
+            "welcome_button_url": "https://example.com/rules",
+            "autorole_id": 12345,
+        },
+    )
+
+    assert settings["dm_enabled"] is True
+    assert settings["show_details"] is False
+    assert settings["buttons"] == [{
+        "enabled": True, "label": "Read rules", "url": "https://example.com/rules",
+    }]
+    assert settings["auto_role_ids"] == [12345]
