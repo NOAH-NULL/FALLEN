@@ -31,7 +31,7 @@ from bot.workers.gateway import GatewayWorkerPool
 from bot.workers.scheduler import Scheduler
 from bot.web.api import DashboardAPI
 from bot.core.event_queue import GatewayEventQueue
-from bot.core.shard_lease import ShardLeaseManager
+from bot.core.shard_lease import ShardLeaseManager, resolve_shard_ids
 from bot.core.app_errors import handle_app_command_error
 from bot.core.prefix_errors import handle_prefix_command_error
 from bot.ui import info_embed
@@ -58,16 +58,17 @@ class Bot(commands.AutoShardedBot):
         self._destructive_actions = defaultdict(deque)
     async def setup_hook(self):
         setup_telemetry(self.settings); start_metrics(self.settings.metrics_host,self.settings.metrics_port); self.health_runner=await start_health_server(self,self.settings.metrics_host,self.settings.health_port)
-        shard_ids = self.settings.parsed_shard_ids
-        if shard_ids is None:
-            shard_count = self.settings.shard_count
-            if shard_count is None:
-                # AutoShardedBot discovers the recommended shard count when it
-                # connects. The lease manager must own every shard it will run,
-                # not silently lease only shard 0 before that discovery.
-                gateway = await self.http.get_bot_gateway()
-                shard_count = int(gateway.get('shards') or 1)
-            shard_ids = list(range(shard_count))
+        recommended_shard_count = None
+        if self.settings.parsed_shard_ids is None and self.settings.shard_count is None:
+            # AutoShardedBot discovers its recommended count during connect.
+            # Acquire all corresponding leases before gateway workers can act.
+            gateway = await self.http.get_bot_gateway()
+            recommended_shard_count = int(gateway.get('shards') or 1)
+        shard_ids = resolve_shard_ids(
+            self.settings.parsed_shard_ids,
+            self.settings.shard_count,
+            recommended_shard_count,
+        )
         await self.shard_leases.acquire(shard_ids)
         await self.music.start(); await self.greetings.start(); await self.reactions.start(); await self.greeting_worker.start(); await self.invites.start(); await self.gateway_workers.start(); await self.invalidation.start(); await self.scheduler.start(); await self.dashboard.start()
         for ext in EXTENSIONS: await self.load_extension(ext)
