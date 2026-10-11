@@ -9,6 +9,13 @@ def _i(k,d):
 
 def _b(k,d=False): return os.getenv(k,str(d)).lower() in {'1','true','yes','on'}
 
+def _f(k,d):
+    try:
+        value = float(os.getenv(k, str(d)))
+        return value if value == value and abs(value) != float('inf') else d
+    except (TypeError, ValueError):
+        return d
+
 def normalize_database_url(url: str) -> str:
     """Normalize Railway/standard PostgreSQL URLs for SQLAlchemy asyncio."""
     if url.startswith('postgres://'):
@@ -35,7 +42,7 @@ class Settings:
     db_pool_size:int=_i('DB_POOL_SIZE',5)
     db_max_overflow:int=_i('DB_MAX_OVERFLOW',5)
     db_use_pgbouncer:bool=_b('DB_USE_PGBOUNCER',False)
-    db_pool_timeout:float=float(os.getenv('DB_POOL_TIMEOUT','10'))
+    db_pool_timeout:float=_f('DB_POOL_TIMEOUT',10.0)
     db_pool_recycle:int=_i('DB_POOL_RECYCLE',1800)
     db_statement_timeout_ms:int=_i('DB_STATEMENT_TIMEOUT_MS',5000)
     metrics_host:str=os.getenv('METRICS_HOST','0.0.0.0')
@@ -45,23 +52,23 @@ class Settings:
     dashboard_port:int=_i('DASHBOARD_PORT',8081)
     greeting_queue_size:int=_i('GREETING_QUEUE_SIZE',1000)
     greeting_workers:int=_i('GREETING_WORKERS',4)
-    greeting_max_event_age:float=float(os.getenv('GREETING_MAX_EVENT_AGE','30'))
+    greeting_max_event_age:float=_f('GREETING_MAX_EVENT_AGE',30.0)
     invite_join_queue_size:int=_i('INVITE_JOIN_QUEUE_SIZE',2000)
-    invite_stat_flush_interval:float=float(os.getenv('INVITE_STAT_FLUSH_INTERVAL','1.0'))
+    invite_stat_flush_interval:float=_f('INVITE_STAT_FLUSH_INTERVAL',1.0)
     shard_count:int|None=_i('SHARD_COUNT',0) or None
     shard_ids:str=os.getenv('SHARD_IDS','')
     gateway_queue_size:int=_i('GATEWAY_QUEUE_SIZE',4096)
     gateway_critical_queue_size:int=_i('GATEWAY_CRITICAL_QUEUE_SIZE',1024)
     gateway_workers:int=_i('GATEWAY_WORKERS',8)
     gateway_guild_concurrency:int=_i('GATEWAY_GUILD_CONCURRENCY',1)
-    gateway_max_event_age:float=float(os.getenv('GATEWAY_MAX_EVENT_AGE','10'))
+    gateway_max_event_age:float=_f('GATEWAY_MAX_EVENT_AGE',10.0)
     shard_lease_ttl_ms:int=_i('SHARD_LEASE_TTL_MS',60000)
-    gateway_shutdown_timeout:float=float(os.getenv('GATEWAY_SHUTDOWN_TIMEOUT','15'))
+    gateway_shutdown_timeout:float=_f('GATEWAY_SHUTDOWN_TIMEOUT',15.0)
     gateway_dlq_maxsize:int=_i('GATEWAY_DLQ_MAXSIZE',2048)
     instance_id:str=os.getenv('INSTANCE_ID',os.getenv('HOSTNAME',str(uuid.uuid4())))
     public_base_url:str=os.getenv('PUBLIC_BASE_URL','http://localhost:8080')
     dashboard_api_key:str=os.getenv('DASHBOARD_API_KEY','')
-    automod_heat_decay:float=float(os.getenv('AUTOMOD_HEAT_DECAY','0.08'))
+    automod_heat_decay:float=_f('AUTOMOD_HEAT_DECAY',0.08)
     automod_heat_ttl:int=_i('AUTOMOD_HEAT_TTL',900)
     music_url:str=os.getenv('LAVALINK_URL','')
     music_password:str=os.getenv('LAVALINK_PASSWORD','')
