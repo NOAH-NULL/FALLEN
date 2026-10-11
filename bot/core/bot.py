@@ -514,12 +514,70 @@ class Bot(commands.AutoShardedBot):
             return
 
         reasons = await self.v16.message_check(message)
+        custom_matches = await self.v16.custom_rule_matches(message)
+        delete_reasons = list(reasons)
+        warn_reasons = []
+        log_reasons = []
+        for rule, reason in custom_matches:
+            action = getattr(rule, 'action', 'delete')
+            if action == 'delete':
+                delete_reasons.append(reason)
+            elif action == 'warn':
+                warn_reasons.append(reason)
+            elif action == 'log':
+                log_reasons.append(reason)
+
         if cfg.get('automod_enabled') and self.automod.check(message.guild.id,message.author.id,message.content,cfg.get('spam_limit',6),cfg.get('spam_window',8)):
-            reasons.append('legacy_automod')
-        if reasons:
-            try: await message.delete(); EVENTS.labels('automod_delete').inc(); await self.extreme.record_security(message.guild.id,'automod_action',actor_id=message.author.id,details={'reasons':reasons,'message_id':message.id})
-            except discord.HTTPException: pass
+            delete_reasons.append('legacy_automod')
+
+        if delete_reasons:
+            try:
+                await message.delete()
+                EVENTS.labels('automod_delete').inc()
+            except discord.HTTPException:
+                log.warning(
+                    'automod could not delete message guild=%s channel=%s message=%s',
+                    message.guild.id, message.channel.id, message.id,
+                )
+            try:
+                await self.extreme.record_security(
+                    message.guild.id,
+                    'automod_action',
+                    actor_id=message.author.id,
+                    details={
+                        'action': 'delete',
+                        'reasons': delete_reasons,
+                        'warn_reasons': warn_reasons,
+                        'log_reasons': log_reasons,
+                        'message_id': message.id,
+                    },
+                )
+            except Exception:
+                log.exception('automod audit record failed guild=%s message=%s', message.guild.id, message.id)
             return
+
+        if warn_reasons:
+            warning = '⚠️ Please review the server rules. Matched: ' + ', '.join(warn_reasons[:5])
+            try:
+                await message.reply(
+                    warning[:1900],
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                    delete_after=10,
+                )
+            except discord.HTTPException:
+                log.warning('automod warning failed guild=%s message=%s', message.guild.id, message.id)
+
+        if log_reasons:
+            try:
+                await self.extreme.record_security(
+                    message.guild.id,
+                    'automod_rule_match',
+                    actor_id=message.author.id,
+                    details={'action': 'log', 'reasons': log_reasons, 'message_id': message.id},
+                )
+            except Exception:
+                log.exception('automod log action failed guild=%s message=%s', message.guild.id, message.id)
         try:
             eligible, level_cfg = await self.levels.eligible(
                 message.guild.id,
