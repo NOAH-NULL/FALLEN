@@ -98,6 +98,35 @@ class ExtremeService:
         return bool((await self.get(guild_id)).get(key, False))
     async def snapshot(self, guild_id: int) -> dict:
         return {"guild_id": guild_id, "created_at": datetime.now(timezone.utc).isoformat(), "features": await self.get(guild_id)}
+    async def restore_features(self, guild_id: int, features) -> dict:
+        """Atomically restore supported boolean feature flags from a snapshot."""
+        if not isinstance(features, dict):
+            raise ValueError("Snapshot features must be an object")
+        clean = {}
+        skipped = []
+        for key, value in features.items():
+            if key not in ALL_FEATURES:
+                skipped.append(str(key))
+            elif key not in IMPLEMENTED_FEATURES:
+                skipped.append(str(key))
+            elif not isinstance(value, bool):
+                skipped.append(str(key))
+            else:
+                clean[key] = value
+
+        async with self.db.session() as s:
+            row = await s.get(GuildConfig, guild_id, with_for_update=True)
+            if row is None:
+                row = GuildConfig(guild_id=guild_id, extreme_settings={})
+                s.add(row)
+                await s.flush()
+            data = dict(row.extreme_settings or {})
+            data.update(clean)
+            row.extreme_settings = data
+            await s.commit()
+        self._settings_cache.pop(guild_id, None)
+        return {"restored": len(clean), "skipped": skipped}
+
     async def validate(self, guild_id: int) -> list[str]:
         errors = []
         async with self.db.session() as s:
