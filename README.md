@@ -277,6 +277,21 @@ or:
 
 to view commands available in the running bot.
 
+
+## Custom Rules Panel
+
+FALLEN's `/rules` commands create a server-specific rules embed. Rule content is empty until an administrator adds it; the example labels in screenshots or notes are not defaults.
+
+1. Create the panel: `/rules setup title description channel`
+2. Add, edit, or remove your own rules: `/rules add`, `/rules edit`, `/rules remove`
+3. Configure exactly four role-toggle buttons: `/rules button slot label role` (slot 1–4)
+4. Add an uploaded image/GIF with `/rules image`, or use `/rules image-url`
+5. Change the title/description with `/rules edit-panel`; refresh or move the panel with `/rules publish`
+6. Inspect the saved setup with `/rules status`
+
+Configuration commands require **Manage Server**. FALLEN needs **Manage Roles** and a role hierarchy above the four configured access roles. Elevated roles (administrator/moderation/management permissions) are rejected for self-assignment. Configure channel permission overwrites for each selected role so adding that role grants the intended channel access. The panel configuration is stored in the existing PostgreSQL-backed guild settings, and its four buttons are restored after restarts.
+
+
 # Requirements
 
 FALLEN requires:
