@@ -26,7 +26,9 @@ ALL_FEATURES = {x for values in FEATURES.values() for x in values}
 # The rest remain in the catalog for future work, but must not masquerade as
 # working security controls or silently report as active.
 IMPLEMENTED_FEATURES = {
-    "anti_bot_join", "account_age_verification", "suspicious_username",
+    # Join-screening signals are catalog-only until they have an explicit,
+    # tested verification/quarantine workflow. Do not advertise detection-only
+    # flags as complete security controls.
     "raid_join_rate", "automatic_lockdown", "anti_channel_delete",
     "anti_role_delete", "security_timeline",
     "temporary_bans", "temporary_timeouts", "scheduled_punishments",
