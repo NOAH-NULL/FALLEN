@@ -6,7 +6,6 @@ from bot.ui import info_embed
 
 SAFE_ACTIONS = {
     'hug': ('hug', '🤗', 'gave a friendly hug to', 'hugged back'),
-    'fuck': ('fuck', '💋', 'fuck'),
     'highfive': ('highfive', '✋', 'gave a high-five to', 'high-fived back'),
     'fistbump': ('fistbump', '👊', 'fist-bumped', 'fist-bumped back'),
     'pat': ('pat', '🫳', 'gave a friendly pat to', 'patted back'),
@@ -141,10 +140,6 @@ class Fun(commands.Cog):
         target = self._resolve_target(ctx_or_interaction, member)
         await self._execute_action(ctx_or_interaction, action, target)
         
-    @commands.hybrid_command(name="fuck", description="fuck")
-    async def fuck(self, ctx: commands.Context, member: discord.Member | None = None):
-        await self._handle_cmd(ctx, "fuck", member)
-
     @commands.hybrid_command(name="kill", description="kill")
     async def kill(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "kill", member)
