@@ -31,7 +31,7 @@ def test_advanced_greeting_commands_exist():
 
 
 def test_advanced_greeting_prefix_commands_exist():
-    source = Path('bot/commands/text.py').read_text()
+    source = Path('bot/commands/greeting_prefix.py').read_text()
     for name in ('status', 'placeholders', 'dm', 'button', 'details'):
         assert f"name='{name}'" in source
 
