@@ -232,10 +232,6 @@ class Fun(commands.Cog):
     async def wreck(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "wreck", member)
 
-    @commands.hybrid_command(name="fuck", description="A polished Fallen community action")
-    async def fuck(self, ctx: commands.Context, member: discord.Member | None = None):
-        await self._handle_cmd(ctx, "fuck", member)
-
     @commands.hybrid_command(name="kiss", description="A polished Fallen community action")
     async def kiss(self, ctx: commands.Context, member: discord.Member | None = None):
         await self._handle_cmd(ctx, "kiss", member)
