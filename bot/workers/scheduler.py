@@ -36,8 +36,15 @@ class Scheduler:
                 for action in await self.bot.extreme.due_actions():
                     guild=self.bot.get_guild(action.guild_id)
                     if not guild:
-                        await self.bot.extreme.complete_action(action.id)
-                        log.warning('scheduled action guild unavailable id=%s; completed as unrecoverable', action.id)
+                        # A cache miss can be transient during startup or a
+                        # shard reconnect. Completing a temporary-ban expiry
+                        # here could leave the member banned indefinitely.
+                        await self.bot.extreme.release_action(action.id)
+                        log.warning(
+                            'scheduled action guild unavailable id=%s guild=%s; released for retry',
+                            action.id,
+                            action.guild_id,
+                        )
                         continue
                     try:
                         if action.action == 'timeout':
