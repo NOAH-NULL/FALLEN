@@ -58,7 +58,16 @@ class Bot(commands.AutoShardedBot):
         self._destructive_actions = defaultdict(deque)
     async def setup_hook(self):
         setup_telemetry(self.settings); start_metrics(self.settings.metrics_host,self.settings.metrics_port); self.health_runner=await start_health_server(self,self.settings.metrics_host,self.settings.health_port)
-        shard_ids=self.settings.parsed_shard_ids or list(range(self.settings.shard_count or 1))
+        shard_ids = self.settings.parsed_shard_ids
+        if shard_ids is None:
+            shard_count = self.settings.shard_count
+            if shard_count is None:
+                # AutoShardedBot discovers the recommended shard count when it
+                # connects. The lease manager must own every shard it will run,
+                # not silently lease only shard 0 before that discovery.
+                gateway = await self.http.get_bot_gateway()
+                shard_count = int(gateway.get('shards') or 1)
+            shard_ids = list(range(shard_count))
         await self.shard_leases.acquire(shard_ids)
         await self.music.start(); await self.greetings.start(); await self.reactions.start(); await self.greeting_worker.start(); await self.invites.start(); await self.gateway_workers.start(); await self.invalidation.start(); await self.scheduler.start(); await self.dashboard.start()
         for ext in EXTENSIONS: await self.load_extension(ext)
