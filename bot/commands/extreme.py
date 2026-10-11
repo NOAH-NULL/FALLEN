@@ -155,6 +155,15 @@ class Extreme(commands.Cog):
             return await ctx.send('❌ Server reputation is disabled. Enable the feature first.')
         if member.id == ctx.author.id:
             return await ctx.send('❌ You cannot give reputation to yourself.')
+        if member.bot:
+            return await ctx.send('❌ Reputation can only be given to human members.')
+        allowed = await self.bot.limiter.allow(
+            f"v16-rep:{ctx.guild.id}:{ctx.author.id}:{member.id}",
+            1,
+            86400,
+        )
+        if not allowed:
+            return await ctx.send('❌ You can give this member reputation only once every 24 hours.')
         score = await self.bot.extreme.reputation_change(ctx.guild.id, member.id, 1)
         await ctx.send(f'⭐ {member.mention} now has **{score}** reputation.')
 
