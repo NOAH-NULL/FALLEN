@@ -92,3 +92,7 @@ def test_reputation_grants_are_rate_limited_and_scores_are_bounded():
     assert "v16-rep:{ctx.guild.id}:{ctx.author.id}:{member.id}" in command_source
     assert "86400" in command_source
     assert "func.least(func.greatest(Reputation.score + delta, -100000), 100000)" in service_source
+
+def test_user_supplied_v16_text_disables_mentions():
+    source = Path("bot/commands/extreme.py").read_text()
+    assert source.count("allowed_mentions=discord.AllowedMentions.none()") >= 4
