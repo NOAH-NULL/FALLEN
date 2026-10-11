@@ -415,9 +415,21 @@ class TextCommands(commands.Cog):
         ch=await self.bot.tickets.create(ctx.guild,None,ctx.author); await ch.send(f'🎫 Welcome {ctx.author.mention}. Staff can help you here.'); await ctx.send(f'Created {ch.mention}.')
     @commands.command(name='close')
     @commands.guild_only()
-    async def close_ticket(self,ctx):
-        if not ctx.channel.name.startswith('ticket-'):return await ctx.send('This is not a ticket channel.')
-        await ctx.send('Closing ticket…'); await ctx.channel.delete(reason='Ticket closed')
+    async def close_ticket(self, ctx):
+        if not ctx.channel.name.startswith('ticket-'):
+            return await ctx.send('This is not a ticket channel.')
+        owner_id = None
+        topic = getattr(ctx.channel, 'topic', None) or ''
+        if 'fallen-ticket-owner:' in topic:
+            try:
+                owner_id = int(topic.split('fallen-ticket-owner:', 1)[1].split()[0])
+            except (ValueError, IndexError):
+                owner_id = None
+        is_manager = bool(ctx.author.guild_permissions.manage_channels)
+        if not is_manager and owner_id != ctx.author.id:
+            return await ctx.send('Only the ticket creator or a channel manager can close this ticket.')
+        await ctx.send('Closing ticket…')
+        await ctx.channel.delete(reason='Ticket closed')
     @commands.command(name='music-status')
     async def music_status(self,ctx):
         node = self.bot.music.node
