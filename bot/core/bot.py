@@ -273,24 +273,47 @@ class Bot(commands.AutoShardedBot):
 
     async def restore_quarantined_member(self, guild, member_id: int):
         snapshot = await self.extreme.snapshot_get(guild.id, f"__quarantine__:{member_id}")
-        if not snapshot:
+        if not snapshot or not guild.me:
             return 0
         member = guild.get_member(member_id)
         if member is None:
             return 0
+
         restored = 0
         try:
-            roles = [
-                guild.get_role(int(role_id))
-                for role_id in snapshot.payload.get("role_ids", [])
-            ]
-            roles = [r for r in roles if r and r < guild.me.top_role]
+            role_ids = [int(role_id) for role_id in snapshot.payload.get("role_ids", [])]
+            roles = []
+            incomplete = False
+            for role_id in role_ids:
+                role = guild.get_role(role_id)
+                if role is None or role >= guild.me.top_role:
+                    incomplete = True
+                    continue
+                roles.append(role)
+
             if roles:
                 await member.add_roles(*roles, reason="Fallen anti-nuke quarantine recovery")
                 restored = len(roles)
+
+            # Keep the quarantine role and recovery snapshot until every saved
+            # role can be restored. Otherwise a partial recovery could silently
+            # give access back while leaving staff permissions missing.
+            if incomplete:
+                return restored
+
+            quarantine = discord.utils.get(guild.roles, name="Fallen Quarantine")
+            if quarantine and quarantine in member.roles and quarantine < guild.me.top_role:
+                await member.remove_roles(
+                    quarantine,
+                    reason="Fallen anti-nuke quarantine recovery",
+                )
             await self.extreme.snapshot_delete(guild.id, f"__quarantine__:{member_id}")
         except discord.HTTPException:
-            return restored
+            log.exception(
+                "quarantine recovery failed guild=%s member=%s",
+                guild.id,
+                member_id,
+            )
         return restored
 
     async def restore_deleted_resource(self, guild, resource, action):
