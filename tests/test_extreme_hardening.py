@@ -273,3 +273,12 @@ async def test_ticket_creation_is_idempotent_per_channel():
     assert "INSERT INTO tickets" in insert_sql
     assert len(db.session_obj.statements) == 2
     assert "SELECT" in str(db.session_obj.statements[1].compile(dialect=postgresql.dialect()))
+
+
+def test_security_recovery_baseline_can_be_refreshed_by_an_administrator():
+    source = Path("bot/commands/extreme.py").read_text()
+    assert "name='security-backup'" in source
+    command = source[source.index("name='security-backup'"):source.index("name='security-log'")]
+    assert "@commands.has_guild_permissions(administrator=True)" in command
+    assert "await self.bot.snapshot_security_state(ctx.guild, ctx.author.id)" in command
+    assert "replaces the previous baseline" in command
