@@ -1,5 +1,3 @@
-import time
-
 class DistributedRateLimiter:
     LUA = """
     local count = redis.call('INCR', KEYS[1])
@@ -17,7 +15,8 @@ class DistributedRateLimiter:
             return False
         if window_seconds <= 0:
             raise ValueError("window_seconds must be positive")
-        now = int(time.time())
-        bucket = f"rl:{key}:{now // window_seconds}"
+        # Keep a stable key and let Redis expire it from the first hit. Fixed
+        # wall-clock buckets allow bursts immediately before and after a boundary.
+        bucket = f"rl:{key}"
         count = await self.redis.client.eval(self.LUA, 1, bucket, window_seconds + 2)
         return int(count) <= limit
