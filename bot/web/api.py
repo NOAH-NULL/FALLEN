@@ -1,4 +1,5 @@
 from aiohttp import web
+import hmac
 import json
 
 DASHBOARD_HTML = r'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fallen • Command Center</title><style>
@@ -20,7 +21,11 @@ class DashboardAPI:
         if not configured: return False
         bearer=request.headers.get('Authorization','')
         supplied=request.headers.get('X-Dashboard-Key','')
-        return supplied == configured or bearer == f'Bearer {configured}'
+        expected_bearer = f'Bearer {configured}'
+        return (
+            hmac.compare_digest(supplied.encode('utf-8'), configured.encode('utf-8'))
+            or hmac.compare_digest(bearer.encode('utf-8'), expected_bearer.encode('utf-8'))
+        )
 
     def _guild(self, guild_id):
         try: gid=int(guild_id)
