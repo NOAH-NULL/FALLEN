@@ -62,6 +62,7 @@ async def test_lockdown_preserves_unrelated_everyone_permissions():
         read_message_history=True,
         send_messages=True,
         add_reactions=False,
+        send_messages_in_threads=True,
     )
     channel = FakeChannel(456, original)
     guild = FakeGuild([channel])
@@ -74,6 +75,7 @@ async def test_lockdown_preserves_unrelated_everyone_permissions():
     assert channel.overwrite.view_channel is True
     assert channel.overwrite.read_message_history is True
     assert channel.overwrite.add_reactions is False
+    assert channel.overwrite.send_messages_in_threads is False
 
     await Bot.security_unlockdown(bot, guild.id)
 
@@ -81,6 +83,7 @@ async def test_lockdown_preserves_unrelated_everyone_permissions():
     assert channel.overwrite.view_channel is True
     assert channel.overwrite.read_message_history is True
     assert channel.overwrite.add_reactions is False
+    assert channel.overwrite.send_messages_in_threads is True
     assert (guild.id, "__lockdown__") not in extreme.snapshots
 
 
