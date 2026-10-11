@@ -21,9 +21,21 @@ FEATURES = {
     "administration": ["configuration_snapshots","configuration_import_export","setup_wizard","permission_templates","role_hierarchy_checker","channel_configuration_checker","bot_health_dashboard","module_diagnostics","configuration_validation","server_backup_restore"],
 }
 ALL_FEATURES = {x for values in FEATURES.values() for x in values}
+
+# Only capabilities with a verified runtime implementation may be enabled.
+# The rest remain in the catalog for future work, but must not masquerade as
+# working security controls or silently report as active.
+IMPLEMENTED_FEATURES = {
+    "anti_bot_join", "account_age_verification", "suspicious_username",
+    "raid_join_rate", "automatic_lockdown", "anti_channel_delete",
+    "anti_role_delete", "security_timeline",
+    "temporary_bans", "temporary_timeouts", "scheduled_punishments",
+    "regex_rules", "duplicate_messages", "flood_detection", "emoji_spam",
+    "domain_whitelist", "domain_blacklist", "mention_spam",
+    "server_reputation", "member_profiles", "personal_playlists",
+}
 DEFAULTS = {name: False for name in ALL_FEATURES}
-# Non-destructive capabilities are enabled by default; destructive/security enforcement remains opt-in.
-for _name in {"activity_xp","server_reputation","member_profiles","profile_badges","profile_colors","achievements","daily_rewards","streaks","trivia","word_games","number_games","reaction_games","personal_playlists","saved_queues","configuration_validation","bot_health_dashboard","module_diagnostics"}:
+for _name in {"server_reputation", "member_profiles", "personal_playlists"}:
     DEFAULTS[_name] = True
 
 class ExtremeService:
@@ -49,13 +61,24 @@ class ExtremeService:
         async with self.db.session() as s:
             row = await s.get(GuildConfig, guild_id)
             stored = dict(row.extreme_settings or {}) if row else {}
-        out=dict(DEFAULTS)
-        out.update(stored)
-        self._settings_cache[guild_id]=(now+self._settings_ttl, dict(out))
+        out = dict(DEFAULTS)
+        # Ignore stale database values for catalog-only features until their
+        # behavior exists and has dedicated tests.
+        out.update({
+            key: bool(value)
+            for key, value in stored.items()
+            if key in IMPLEMENTED_FEATURES
+        })
+        self._settings_cache[guild_id] = (now + self._settings_ttl, dict(out))
         return out
     async def set(self, guild_id: int, key: str, value):
         key = key.strip().lower()
-        if key not in ALL_FEATURES: raise ValueError(f"Unknown V16 feature: {key}")
+        if key not in ALL_FEATURES:
+            raise ValueError(f"Unknown V16 feature: {key}")
+        if key not in IMPLEMENTED_FEATURES:
+            raise ValueError(
+                f"V16 feature '{key}' is catalog-only and is not implemented yet"
+            )
         async with self.db.session() as s:
             row = await s.get(GuildConfig, guild_id, with_for_update=True)
             if not row:
@@ -68,9 +91,17 @@ class ExtremeService:
     async def snapshot(self, guild_id: int) -> dict:
         return {"guild_id": guild_id, "created_at": datetime.now(timezone.utc).isoformat(), "features": await self.get(guild_id)}
     async def validate(self, guild_id: int) -> list[str]:
-        settings = await self.get(guild_id); errors=[]
-        for key in settings:
-            if key not in ALL_FEATURES: errors.append(f"Unknown stored feature: {key}")
+        errors = []
+        async with self.db.session() as s:
+            row = await s.get(GuildConfig, guild_id)
+            stored = dict(row.extreme_settings or {}) if row else {}
+        for key, value in stored.items():
+            if key not in ALL_FEATURES:
+                errors.append(f"Unknown stored feature: {key}")
+            elif key not in IMPLEMENTED_FEATURES and bool(value):
+                errors.append(
+                    f"Catalog-only feature '{key}' is stored as enabled but is not implemented; its value is ignored"
+                )
         return errors
     async def record_security(self,guild_id,event_type,actor_id=None,target_id=None,details=None):
         async with self.db.session() as s:
