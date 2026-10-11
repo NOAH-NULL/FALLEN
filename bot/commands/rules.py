@@ -12,7 +12,9 @@ from discord.ext import commands
 DANGEROUS_ROLE_PERMISSIONS = (
     "administrator", "manage_guild", "manage_roles", "manage_channels",
     "manage_webhooks", "manage_messages", "kick_members", "ban_members",
-    "moderate_members", "mention_everyone",
+    "moderate_members", "mention_everyone", "manage_nicknames",
+    "manage_emojis_and_stickers", "manage_events", "manage_expressions",
+    "manage_threads", "view_audit_log",
 )
 
 
@@ -386,6 +388,8 @@ class Rules(commands.Cog):
         buttons = panel.setdefault("buttons", [])
         while len(buttons) < 4:
             buttons.append({"label": f"Button {len(buttons) + 1}", "role_id": None})
+        if any(index != slot - 1 and item.get("role_id") == role.id for index, item in enumerate(buttons)):
+            return await interaction.response.send_message("Each access button must use a different role.", ephemeral=True)
         buttons[slot - 1] = {"label": label.strip(), "role_id": role.id}
         try:
             await self._save_panel(interaction.guild_id, panel)
