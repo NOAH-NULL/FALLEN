@@ -96,7 +96,7 @@ def test_stored_banner_bytes_are_safe_for_json_cache():
 
 
 @pytest.mark.asyncio
-async def test_slash_greeting_message_is_saved():
+async def test_slash_greeting_image_url_is_saved():
     config = SimpleNamespace(update=AsyncMock())
     cog = Greeting(SimpleNamespace(guild_config=config))
     interaction = SimpleNamespace(
@@ -104,29 +104,23 @@ async def test_slash_greeting_message_is_saved():
         response=SimpleNamespace(send_message=AsyncMock()),
     )
 
-    await Greeting.message.callback(cog, interaction, 'welcome', 'Welcome, {name}!')
+    await Greeting.set_image.callback(cog, interaction, 'welcome', 'https://example.com/banner.gif')
 
-    config.update.assert_awaited_once_with(42, welcome_message='Welcome, {name}!')
+    config.update.assert_awaited_once_with(42, welcome_image_url='https://example.com/banner.gif')
 
 
 @pytest.mark.asyncio
-async def test_slash_banner_upload_saves_gif_bytes():
-    data = make_gif()
-    attachment = SimpleNamespace(content_type='image/gif', read=AsyncMock(return_value=data))
+async def test_slash_greeting_embed_toggle_is_saved():
     config = SimpleNamespace(update=AsyncMock())
-    cog = Greeting(SimpleNamespace(guild_config=config, greetings=GreetingRenderer()))
+    cog = Greeting(SimpleNamespace(guild_config=config))
     interaction = SimpleNamespace(
         guild_id=42,
         response=SimpleNamespace(send_message=AsyncMock()),
     )
 
-    await Greeting.banner.callback(cog, interaction, 'welcome', attachment)
+    await Greeting.toggle_embed.callback(cog, interaction, 'welcome', False)
 
-    config.update.assert_awaited_once_with(
-        42,
-        welcome_background='assets/welcome.gif',
-        welcome_background_data=data,
-    )
+    config.update.assert_awaited_once_with(42, welcome_embed_enabled=False)
 
 
 @pytest.mark.asyncio
