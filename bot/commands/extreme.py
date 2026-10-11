@@ -62,6 +62,9 @@ class Extreme(commands.Cog):
     @v16.command(name='snapshot', description='Save a named server configuration snapshot')
     @commands.has_guild_permissions(administrator=True)
     async def snapshot(self, ctx, name: str = 'default'):
+        name = name.strip()
+        if not name or len(name) > 64 or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ' for ch in name):
+            return await ctx.send('❌ Snapshot names must be 1–64 characters using letters, numbers, spaces, `_` or `-`.')
         data=await self.bot.extreme.snapshot(ctx.guild.id)
         await self.bot.extreme.snapshot_save(ctx.guild.id,ctx.author.id,name,data)
         raw=json.dumps(data,indent=2).encode()
@@ -125,8 +128,13 @@ class Extreme(commands.Cog):
         kind=kind.lower()
         if kind not in {'regex','domain_blacklist','domain_whitelist'}: return await ctx.send('❌ kind must be `regex`, `domain_blacklist`, or `domain_whitelist`.')
         if action not in {'delete','warn','log'}: return await ctx.send('❌ action must be `delete`, `warn`, or `log`.')
-        try: await self.bot.extreme.upsert_automod_rule(ctx.guild.id,name,kind,pattern,action)
-        except Exception as exc: return await ctx.send(f'❌ Could not save rule: {exc}')
+        try:
+            await self.bot.extreme.upsert_automod_rule(ctx.guild.id, name, kind, pattern, action)
+        except ValueError as exc:
+            return await ctx.send(f'❌ {exc}')
+        except Exception:
+            self.bot.log.exception('V16 AutoMod rule save failed guild=%s rule=%s', ctx.guild.id, name)
+            return await ctx.send('❌ Could not save the AutoMod rule because of an internal error. Check the bot logs.')
         await ctx.send(f'✅ AutoMod rule `{name}` saved.')
 
     @v16.command(name='profile', description='Set a persistent member profile bio')
