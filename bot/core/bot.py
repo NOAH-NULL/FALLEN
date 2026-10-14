@@ -324,7 +324,7 @@ class Bot(commands.AutoShardedBot):
             except discord.HTTPException:
                 pass
             for target_id, overwrite_data in (data.get("overwrites") or {}).items():
-                target = guild.get_role(int(target_id)) or guild.get_member(int(target_id))
+                target = await self._resolve_permission_target(guild, target_id)
                 if target is None:
                     continue
                 try:
@@ -416,6 +416,27 @@ class Bot(commands.AutoShardedBot):
             )
         return restored
 
+    @staticmethod
+    async def _resolve_permission_target(guild, target_id):
+        """Resolve role/member overwrite targets, fetching uncached members when possible."""
+        try:
+            target_id = int(target_id)
+        except (TypeError, ValueError):
+            return None
+        role = guild.get_role(target_id)
+        if role is not None:
+            return role
+        member = guild.get_member(target_id)
+        if member is not None:
+            return member
+        fetch_member = getattr(guild, "fetch_member", None)
+        if fetch_member is None:
+            return None
+        try:
+            return await fetch_member(target_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+
     async def restore_deleted_resource(self, guild, resource, action):
         """Recreate a deleted resource, preferring trusted baseline metadata."""
         baseline = {}
@@ -448,7 +469,7 @@ class Bot(commands.AutoShardedBot):
             for target_id, data in baseline["overwrites"].items():
                 try:
                     target_id = int(target_id)
-                    target = guild.get_role(target_id) or guild.get_member(target_id)
+                    target = await self._resolve_permission_target(guild, target_id)
                     if target is not None and isinstance(data, dict):
                         allow = discord.Permissions(int(data.get("allow", 0)))
                         deny = discord.Permissions(int(data.get("deny", 0)))
