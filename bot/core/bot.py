@@ -683,6 +683,11 @@ class Bot(commands.AutoShardedBot):
         await self.invites.record_leave(m)
         await self.greeting_worker.submit(m,'goodbye')
     async def process_message(self,message):
+        # All command and moderation processing below is guild-scoped. Keep a
+        # defensive guard here even though on_message normally filters DMs, so
+        # direct callers and future gateway routes cannot dereference message.guild.
+        if getattr(message, "guild", None) is None:
+            return
         # Prefix commands take the fast lane: parse/invoke before non-critical
         # XP, invite and moderation bookkeeping. This keeps command latency
         # independent of background engagement work.
