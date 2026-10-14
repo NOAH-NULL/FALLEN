@@ -129,3 +129,44 @@ async def test_text_channel_recovery_uses_baseline_metadata_not_modified_event_o
     assert kwargs["topic"] == "trusted topic"
     assert kwargs["nsfw"] is False
     assert kwargs["slowmode_delay"] == 5
+
+
+@pytest.mark.asyncio
+async def test_deleted_channel_recovery_fetches_uncached_member_overwrite_targets():
+    member = SimpleNamespace(id=555, name="uncached-member")
+    resource = MagicMock(spec=discord.TextChannel)
+    resource.id = 14
+    resource.name = "attacker-name"
+    resource.category_id = None
+    resource.position = 8
+    resource.topic = None
+    resource.nsfw = False
+    resource.slowmode_delay = 0
+    resource.overwrites = {}
+    resource.is_news.return_value = False
+
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.return_value = None
+    guild.get_role.return_value = None
+    guild.get_member.return_value = None
+    guild.fetch_member = AsyncMock(return_value=member)
+    guild.create_text_channel = AsyncMock(return_value=SimpleNamespace(id=102))
+
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=SimpleNamespace(payload={
+        "channels": {
+            "14": {
+                "name": "trusted-channel",
+                "position": 1,
+                "overwrites": {"555": {"allow": discord.Permissions(view_channel=True).value, "deny": 0}},
+            }
+        }
+    })))
+
+    restored_id = await Bot.restore_deleted_resource(
+        SimpleNamespace(extreme=extreme), guild, resource, "channel_delete"
+    )
+
+    assert restored_id == 102
+    guild.fetch_member.assert_awaited_once_with(555)
+    assert member in guild.create_text_channel.await_args.kwargs["overwrites"]
