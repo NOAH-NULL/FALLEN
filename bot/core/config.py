@@ -74,7 +74,22 @@ class Settings:
     music_password:str=os.getenv('LAVALINK_PASSWORD','')
     @property
     def parsed_shard_ids(self):
-        if not self.shard_ids:return None
-        return [int(x.strip()) for x in self.shard_ids.split(',') if x.strip()]
+        raw = self.shard_ids.strip()
+        if not raw:
+            return None
+        parts = raw.split(',')
+        if any(not part.strip() for part in parts):
+            raise ValueError("SHARD_IDS must be comma-separated integers without empty entries")
+        try:
+            shard_ids = [int(part.strip()) for part in parts]
+        except ValueError as exc:
+            raise ValueError("SHARD_IDS must contain only integer IDs, for example '0,1'") from exc
+        if any(shard_id < 0 for shard_id in shard_ids):
+            raise ValueError("SHARD_IDS cannot contain negative IDs")
+        if len(set(shard_ids)) != len(shard_ids):
+            raise ValueError("SHARD_IDS cannot contain duplicate IDs")
+        if self.shard_count is not None and any(shard_id >= self.shard_count for shard_id in shard_ids):
+            raise ValueError("Every SHARD_IDS entry must be smaller than SHARD_COUNT")
+        return shard_ids
 
 settings=Settings()
