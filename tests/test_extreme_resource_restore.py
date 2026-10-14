@@ -133,7 +133,9 @@ async def test_text_channel_recovery_uses_baseline_metadata_not_modified_event_o
 
 @pytest.mark.asyncio
 async def test_deleted_channel_recovery_fetches_uncached_member_overwrite_targets():
-    member = SimpleNamespace(id=555, name="uncached-member")
+    member = MagicMock(spec=discord.Member)
+    member.id = 555
+    member.name = "uncached-member"
     resource = MagicMock(spec=discord.TextChannel)
     resource.id = 14
     resource.name = "attacker-name"
