@@ -24,3 +24,12 @@ def test_critical_flood_cannot_starve_normal_events():
             e=await q.get(); seen.append(e.kind); q.task_done(e)
         assert seen[8] == 'normal'
     asyncio.run(run())
+
+
+from types import SimpleNamespace
+from bot.core.bot import Bot
+
+
+def test_process_message_safely_ignores_direct_messages():
+    # The method's first action must be the guild guard; no bot state is needed.
+    asyncio.run(Bot.process_message(None, SimpleNamespace(guild=None)))
