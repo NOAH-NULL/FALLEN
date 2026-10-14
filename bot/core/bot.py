@@ -324,7 +324,7 @@ class Bot(commands.AutoShardedBot):
             except discord.HTTPException:
                 pass
             for target_id, overwrite_data in (data.get("overwrites") or {}).items():
-                target = await self._resolve_permission_target(guild, target_id)
+                target = await Bot._resolve_permission_target(guild, target_id)
                 if target is None:
                     continue
                 try:
@@ -469,7 +469,7 @@ class Bot(commands.AutoShardedBot):
             for target_id, data in baseline["overwrites"].items():
                 try:
                     target_id = int(target_id)
-                    target = await self._resolve_permission_target(guild, target_id)
+                    target = await Bot._resolve_permission_target(guild, target_id)
                     if target is not None and isinstance(data, dict):
                         allow = discord.Permissions(int(data.get("allow", 0)))
                         deny = discord.Permissions(int(data.get("deny", 0)))
