@@ -488,7 +488,13 @@ class Bot(commands.AutoShardedBot):
             except discord.HTTPException:
                 pass
             for target_id, overwrite_data in (data.get("overwrites") or {}).items():
-                target = await Bot._resolve_permission_target(guild, target_id)
+                try:
+                    numeric_target_id = int(target_id)
+                except (TypeError, ValueError):
+                    continue
+                target = recreated_roles.get(numeric_target_id)
+                if target is None:
+                    target = await Bot._resolve_permission_target(guild, numeric_target_id)
                 if target is None:
                     continue
                 try:
