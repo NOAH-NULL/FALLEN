@@ -97,20 +97,69 @@ class ShardLeaseManager:
         try:
             for shard_id in shard_ids:
                 key = f"shard-lease:{shard_id}"
-
-                fence = await self.cache.acquire_fenced_lock(
-                    key,
-                    self.token,
-                    f"shard-fence:{shard_id}",
-                    self.ttl_ms,
+                deadline = (
+                    asyncio.get_running_loop().time()
+                    + (self.ttl_ms / 1000)
+                    + 2.0
                 )
+                wait_logged = False
 
-                if not fence:
-                    raise RuntimeError(
-                        f"Shard lease unavailable: {key}. "
-                        "Another owner may be active, or its lease "
-                        "has not expired. Refusing unsafe takeover."
+                while True:
+                    fence = await self.cache.acquire_fenced_lock(
+                        key,
+                        self.token,
+                        f"shard-fence:{shard_id}",
+                        self.ttl_ms,
                     )
+
+                    if fence:
+                        break
+
+                    ttl_reader = getattr(
+                        self.cache, "fenced_lock_ttl_ms", None
+                    )
+                    if ttl_reader is None:
+                        raise RuntimeError(
+                            f"Shard lease unavailable: {key}. "
+                            "Another owner may be active, or its lease "
+                            "has not expired. Refusing unsafe takeover."
+                        )
+
+                    remaining_ms = await ttl_reader(key)
+                    if remaining_ms == -2:
+                        # The key expired between SET-NX and PTTL; retry now.
+                        continue
+                    if remaining_ms == -1:
+                        raise RuntimeError(
+                            f"Shard lease {key} exists without an expiry. "
+                            "Refusing unsafe takeover; inspect Redis safely."
+                        )
+
+                    now = asyncio.get_running_loop().time()
+                    if now >= deadline:
+                        raise RuntimeError(
+                            f"Shard lease unavailable: {key} after waiting "
+                            f"{self.ttl_ms + 2000} ms; last_ttl_ms="
+                            f"{remaining_ms}. Another instance may still "
+                            "own this shard. Refusing unsafe takeover."
+                        )
+
+                    if not wait_logged:
+                        log.warning(
+                            "Shard lease %s is already held; waiting for "
+                            "its existing TTL to expire (initial_ttl_ms=%s). "
+                            "A live owner will keep renewing it.",
+                            key,
+                            remaining_ms,
+                        )
+                        wait_logged = True
+
+                    sleep_seconds = min(
+                        max(remaining_ms / 1000, 0.25),
+                        2.0,
+                        max(0.0, deadline - now),
+                    )
+                    await asyncio.sleep(sleep_seconds)
 
                 fence = int(fence)
                 acquired.append((shard_id, key, fence))
