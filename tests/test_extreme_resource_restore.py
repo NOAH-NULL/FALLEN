@@ -294,3 +294,60 @@ async def test_security_state_restore_recreates_category_before_its_children():
     guild.create_category.assert_awaited_once()
     guild.create_text_channel.assert_awaited_once()
     assert guild.create_text_channel.await_args.kwargs["category"] is category
+
+
+@pytest.mark.asyncio
+async def test_restored_role_is_reapplied_to_existing_channel_overwrites():
+    permissions = discord.Permissions(view_channel=True, send_messages=True)
+    baseline = SimpleNamespace(payload={
+        "roles": {
+            "401": {
+                "name": "Moderator", "position": 3, "permissions": permissions.value,
+                "colour": 123, "hoist": True, "mentionable": False,
+            },
+        },
+        "channels": {
+            "901": {
+                "type": "TextChannel", "is_news": False, "name": "staff-chat",
+                "position": 1, "category_id": None, "topic": None,
+                "nsfw": False, "slowmode_delay": 0,
+                "overwrites": {"401": {"allow": permissions.value, "deny": 0}},
+            },
+        },
+    })
+    extreme = SimpleNamespace(
+        snapshot_get=AsyncMock(return_value=baseline),
+        snapshot_save=AsyncMock(),
+    )
+
+    class RecoveryHarness:
+        def __init__(self):
+            self.extreme = extreme
+
+        _recreate_missing_security_resource = Bot._recreate_missing_security_resource
+
+    created_role = MagicMock()
+    created_role.id = 501
+    created_role.edit = AsyncMock()
+    channel = MagicMock()
+    channel.id = 901
+    channel.edit = AsyncMock()
+    channel.set_permissions = AsyncMock()
+    guild = MagicMock()
+    guild.id = 123
+    guild.me.top_role.position = 10
+    guild.get_role.return_value = None
+    guild.get_channel.return_value = channel
+    guild.get_member.return_value = None
+    guild.create_role = AsyncMock(return_value=created_role)
+    guild.edit_role_positions = AsyncMock()
+
+    restored = await Bot.restore_security_state(RecoveryHarness(), guild)
+
+    assert restored["roles"] == 1
+    guild.create_role.assert_awaited_once()
+    channel.set_permissions.assert_awaited_once()
+    assert channel.set_permissions.await_args.args[0] is created_role
+    assert extreme.snapshot_save.await_args.args[3]["channels"]["901"]["overwrites"]["501"] == {
+        "allow": permissions.value, "deny": 0
+    }
