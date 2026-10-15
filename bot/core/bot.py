@@ -247,7 +247,7 @@ class Bot(commands.AutoShardedBot):
         return changed
 
     async def snapshot_security_state(
-        self, guild, created_by=0, name="__security_state__", merge_resource=None
+        self, guild, created_by=0, name="__security_state__", merge_resource=None, upgrade_legacy=False
     ):
         payload = {
             "channels": {str(ch.id): {
@@ -281,6 +281,10 @@ class Bot(commands.AutoShardedBot):
             group, resource_id = merge_resource
             return await self.extreme.snapshot_merge_resource(
                 guild.id, created_by, name, payload, group, resource_id
+            )
+        if upgrade_legacy:
+            return await self.extreme.snapshot_upgrade_baseline(
+                guild.id, created_by, name, payload
             )
         return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
 
@@ -832,9 +836,18 @@ class Bot(commands.AutoShardedBot):
         GUILDS.set(len(self.guilds)); GATEWAY_LATENCY.set(self.latency); log.info('ready guilds=%d shards=%s ids=%s',len(self.guilds),self.shard_count,self.shard_ids)
         for guild in self.guilds:
             await self.invites.refresh_guild(guild)
-            if await self.extreme.snapshot_get(guild.id, '__security_state__') is None:
-                try: await self.snapshot_security_state(guild, guild.me.id if guild.me else 0)
-                except Exception: log.exception('security baseline snapshot failed guild=%s', guild.id)
+            try:
+                existing_baseline = await self.extreme.snapshot_get(guild.id, "__security_state__")
+                if existing_baseline is None:
+                    await self.snapshot_security_state(guild, guild.me.id if guild.me else 0)
+                else:
+                    # Upgrade older snapshots in place without replacing the
+                    # original trusted names/permissions for existing resources.
+                    await self.snapshot_security_state(
+                        guild, guild.me.id if guild.me else 0, upgrade_legacy=True
+                    )
+            except Exception:
+                log.exception("security baseline snapshot upgrade failed guild=%s", guild.id)
     async def on_guild_channel_create(self, channel):
         try:
             await self.snapshot_security_state(
