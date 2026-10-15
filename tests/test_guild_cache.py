@@ -52,3 +52,33 @@ async def test_update_inserts_required_defaults_and_updates_only_requested_field
     assert params['extreme_settings']=={}
     assert 'welcome_channel_id = excluded.welcome_channel_id' in sql
     assert 'welcome_message = excluded.welcome_message' not in sql
+
+
+@pytest.mark.asyncio
+async def test_guild_config_falls_back_to_database_when_cache_is_unavailable():
+    class BrokenCache(Cache):
+        async def get_json(self, key):
+            raise ConnectionError("Redis unavailable")
+
+    service = GuildConfigService(DB(), BrokenCache())
+    config = await service.get(77)
+
+    assert config["guild_id"] == 77
+    assert config["welcome_message"].startswith("Welcome ")
+
+
+@pytest.mark.asyncio
+async def test_successful_database_update_is_not_reported_failed_when_cache_invalidation_fails():
+    class BrokenInvalidationCache(Cache):
+        async def delete(self, key):
+            raise ConnectionError("Redis unavailable")
+
+        async def publish(self, *args):
+            raise ConnectionError("Redis unavailable")
+
+    db = CaptureDB()
+    service = GuildConfigService(db, BrokenInvalidationCache())
+
+    await service.update(88, welcome_channel_id=456)
+
+    assert db.captured.statement is not None
