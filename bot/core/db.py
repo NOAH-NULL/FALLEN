@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 from collections.abc import Awaitable, Callable
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from bot.core.fencing import current_fence, StaleLeaseError
 from bot.core.metrics import DB_LATENCY
@@ -34,11 +35,19 @@ class FencedAsyncSession(AsyncSession):
 class Database:
     def __init__(self, settings):
         connect_args = {'command_timeout': settings.db_statement_timeout_ms / 1000}
+        database_url = settings.database_url
         if settings.db_use_pgbouncer:
-            connect_args.update({'statement_cache_size': 0, 'prepared_statement_cache_size': 0})
-            
+            # asyncpg.connect accepts statement_cache_size, while
+            # prepared_statement_cache_size is a SQLAlchemy dialect URL option.
+            # Passing both in connect_args forwards an unsupported keyword to
+            # asyncpg and prevents every database connection from opening.
+            connect_args['statement_cache_size'] = 0
+            database_url = make_url(database_url).update_query_dict(
+                {'prepared_statement_cache_size': '0'}
+            )
+
         self.engine = create_async_engine(
-            settings.database_url,
+            database_url,
             pool_pre_ping=True,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
