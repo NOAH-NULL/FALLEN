@@ -47,4 +47,4 @@ def test_regular_database_connection_does_not_force_pgbouncer_options(monkeypatc
     db_module.Database(_settings(pgbouncer=False))
 
     assert "statement_cache_size" not in captured["kwargs"]["connect_args"]
-    assert "prepared_statement_cache_size" not in captured["url"].query
+    assert "prepared_statement_cache_size" not in db_module.make_url(captured["url"]).query
