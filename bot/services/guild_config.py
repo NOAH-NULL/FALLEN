@@ -1,4 +1,5 @@
 import base64
+import logging
 from datetime import date, datetime
 
 from sqlalchemy import select
@@ -6,6 +7,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from bot.models import GuildConfig
 from bot.cache.keys import guild as guild_key
 from bot.cache.singleflight import DistributedSingleFlight
+
+log = logging.getLogger(__name__)
 
 class GuildConfigService:
     def __init__(self, db, cache, ttl=600, lock_ttl_ms=30000):
@@ -52,11 +55,26 @@ class GuildConfigService:
                 result = await s.execute(select(*GuildConfig.__table__.c).where(GuildConfig.guild_id == gid))
                 row = result.mappings().first()
                 return self._cache_safe(dict(row) if row else self._default(gid))
-        return await self.singleflight.run(key, load, read)
+        try:
+            return await self.singleflight.run(key, load, read)
+        except Exception:
+            # Redis is an optimization, not a prerequisite for command handling.
+            # A cache outage or malformed cache entry must not make every
+            # message/member event fail while PostgreSQL is still available.
+            log.exception("guild config cache path failed; loading from PostgreSQL guild=%s", gid)
+            return await load()
 
     async def invalidate(self, gid):
         key = guild_key(gid)
-        await self.cache.delete(key)
-        # Pub/Sub is only a latency optimization; the cache TTL remains the
-        # correctness fallback if a subscriber is disconnected.
-        await self.cache.publish('guild-config-invalidated', {'guild_id': gid})
+        try:
+            await self.cache.delete(key)
+        except Exception:
+            # The DB commit is already durable when this is called. Do not
+            # report the write as failed solely because cache invalidation is
+            # unavailable; TTL bounds any stale entry if Redis recovers.
+            log.exception("guild config cache invalidation failed guild=%s", gid)
+        try:
+            # Pub/Sub is a latency optimization; consumers also rely on TTL.
+            await self.cache.publish('guild-config-invalidated', {'guild_id': gid})
+        except Exception:
+            log.exception("guild config invalidation broadcast failed guild=%s", gid)
