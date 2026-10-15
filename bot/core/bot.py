@@ -341,8 +341,6 @@ class Bot(commands.AutoShardedBot):
             if channel_type == "StageChannel":
                 return await guild.create_stage_channel(
                     name, category=category, position=position, overwrites=overwrites,
-                    bitrate=int(data.get("bitrate") or 64000),
-                    user_limit=int(data.get("user_limit") or 0),
                     reason="Fallen anti-nuke restoration",
                 )
             if channel_type == "TextChannel":
@@ -615,9 +613,6 @@ class Bot(commands.AutoShardedBot):
                     category=saved_category,
                     position=saved_position,
                     overwrites=saved_overwrites,
-                    bitrate=baseline.get("bitrate", resource.bitrate),
-                    user_limit=baseline.get("user_limit", resource.user_limit),
-                    rtc_region=baseline.get("rtc_region", resource.rtc_region),
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
