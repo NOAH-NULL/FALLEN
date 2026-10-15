@@ -273,7 +273,9 @@ class Bot(commands.AutoShardedBot):
         }
         return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
 
-    async def _recreate_missing_security_resource(self, guild, resource_id, action, data):
+    async def _recreate_missing_security_resource(
+        self, guild, resource_id, action, data, recreated_channels=None, recreated_roles=None
+    ):
         """Recreate a missing channel or role using only the trusted startup baseline.
 
         Discord assigns a new ID to recreated resources, so this restores the
@@ -289,7 +291,12 @@ class Bot(commands.AutoShardedBot):
             if action == "channel_delete":
                 for target_id, overwrite_data in (data.get("overwrites") or {}).items():
                     try:
-                        target = await Bot._resolve_permission_target(guild, target_id)
+                        numeric_target_id = int(target_id)
+                        target = (recreated_roles or {}).get(numeric_target_id)
+                        if target is None:
+                            target = (recreated_channels or {}).get(numeric_target_id)
+                        if target is None:
+                            target = await Bot._resolve_permission_target(guild, numeric_target_id)
                         if target is None or not isinstance(overwrite_data, dict):
                             continue
                         allow = discord.Permissions(int(overwrite_data.get("allow", 0)))
@@ -323,7 +330,12 @@ class Bot(commands.AutoShardedBot):
 
             channel_type = data.get("type")
             category_id = data.get("category_id")
-            category = guild.get_channel(int(category_id)) if category_id else None
+            category = None
+            if category_id:
+                numeric_category_id = int(category_id)
+                category = (recreated_channels or {}).get(numeric_category_id)
+                if category is None:
+                    category = guild.get_channel(numeric_category_id)
             position = max(0, int(data.get("position", 0)))
 
             if channel_type == "CategoryChannel":
@@ -381,6 +393,7 @@ class Bot(commands.AutoShardedBot):
             return {"roles": 0, "channels": 0}
         restored = {"roles": 0, "channels": 0}
         role_data = snapshot.payload.get("roles", {})
+        recreated_roles = {}
         for role_id, data in role_data.items():
             try:
                 role = guild.get_role(int(role_id))
@@ -391,6 +404,7 @@ class Bot(commands.AutoShardedBot):
                     guild, role_id, "role_delete", data
                 )
                 if recreated is not None:
+                    recreated_roles[int(role_id)] = recreated
                     restored["roles"] += 1
                 continue
             if not guild.me or role >= guild.me.top_role:
@@ -424,16 +438,30 @@ class Bot(commands.AutoShardedBot):
                 pass
 
         channel_data = snapshot.payload.get("channels", {})
-        for channel_id, data in channel_data.items():
+        recreated_channels = {}
+        channel_items = list(channel_data.items())
+        # Recreate categories first so missing child channels can attach to the
+        # replacement category instead of silently becoming top-level channels.
+        channel_items.sort(key=lambda item: (
+            0 if isinstance(item[1], dict) and item[1].get("type") == "CategoryChannel" else 1,
+            int(item[1].get("position", 0)) if isinstance(item[1], dict) else 0,
+        ))
+        for channel_id, data in channel_items:
             try:
                 channel = guild.get_channel(int(channel_id))
             except (TypeError, ValueError):
                 continue
             if channel is None:
                 recreated = await self._recreate_missing_security_resource(
-                    guild, channel_id, "channel_delete", data
+                    guild, channel_id, "channel_delete", data,
+                    recreated_channels=recreated_channels,
+                    recreated_roles=recreated_roles,
                 )
                 if recreated is not None:
+                    try:
+                        recreated_channels[int(channel_id)] = recreated
+                    except (TypeError, ValueError):
+                        pass
                     restored["channels"] += 1
                 continue
             try:
@@ -713,7 +741,10 @@ class Bot(commands.AutoShardedBot):
                 # new snapshot after the destructive event would snapshot the
                 # compromised state and make restoration ineffective.
                 await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
-                await self.restore_deleted_resource(guild, resource, action) if resource else None
+                # The baseline restore handles every missing resource in one
+                # pass. Calling restore_deleted_resource first would recreate
+                # this event's target twice because its old Discord ID remains
+                # absent from the baseline's channel/role map.
                 await self.restore_security_state(guild)
                 await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
                 self._destructive_actions.pop(key, None)
