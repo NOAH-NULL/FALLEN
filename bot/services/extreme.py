@@ -345,6 +345,31 @@ class ExtremeService:
             if not row: row=ConfigSnapshot(guild_id=guild_id,created_by=created_by,name=name,payload=payload); s.add(row)
             else: row.created_by=created_by; row.payload=payload
             await s.commit(); return row
+
+    async def snapshot_merge_resource(self, guild_id, created_by, name, current_payload, group, resource_id):
+        """Atomically add/update one newly created resource without replacing the trusted baseline."""
+        async with self.db.session() as s:
+            row = (await s.execute(
+                select(ConfigSnapshot)
+                .where(ConfigSnapshot.guild_id == guild_id, ConfigSnapshot.name == name)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if row is None:
+                row = ConfigSnapshot(
+                    guild_id=guild_id, created_by=created_by, name=name, payload=current_payload
+                )
+                s.add(row)
+            else:
+                merged = deepcopy(row.payload) if isinstance(row.payload, dict) else {}
+                merged.setdefault("channels", {})
+                merged.setdefault("roles", {})
+                resource = (current_payload.get(group) or {}).get(str(resource_id))
+                if resource is not None:
+                    merged[group][str(resource_id)] = resource
+                row.created_by = created_by
+                row.payload = merged
+            await s.commit()
+            return row
     async def snapshots(self, guild_id, limit=50):
         async with self.db.session() as s:
             return list((await s.execute(select(ConfigSnapshot).where(ConfigSnapshot.guild_id==guild_id).order_by(ConfigSnapshot.id.desc()).limit(limit))).scalars())
