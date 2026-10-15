@@ -370,6 +370,40 @@ class ExtremeService:
                 row.payload = merged
             await s.commit()
             return row
+
+    async def snapshot_upgrade_baseline(self, guild_id, created_by, name, current_payload):
+        """Enrich legacy snapshots without overwriting metadata already trusted."""
+        async with self.db.session() as s:
+            row = (await s.execute(
+                select(ConfigSnapshot)
+                .where(ConfigSnapshot.guild_id == guild_id, ConfigSnapshot.name == name)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if row is None:
+                row = ConfigSnapshot(
+                    guild_id=guild_id, created_by=created_by, name=name, payload=current_payload
+                )
+                s.add(row)
+            else:
+                merged = deepcopy(row.payload) if isinstance(row.payload, dict) else {}
+                for group in ("channels", "roles"):
+                    old_items = merged.setdefault(group, {})
+                    for resource_id, current in (current_payload.get(group) or {}).items():
+                        old = old_items.get(resource_id)
+                        if old is None:
+                            # This resource was created after the old baseline.
+                            old_items[resource_id] = current
+                        elif group == "channels" and isinstance(old, dict) and "type" not in old:
+                            # Add only the missing type metadata. Keep the saved
+                            # name, permissions, and other trusted properties.
+                            enriched = dict(old)
+                            enriched["type"] = current.get("type")
+                            enriched["is_news"] = current.get("is_news", False)
+                            old_items[resource_id] = enriched
+                row.created_by = created_by
+                row.payload = merged
+            await s.commit()
+            return row
     async def snapshots(self, guild_id, limit=50):
         async with self.db.session() as s:
             return list((await s.execute(select(ConfigSnapshot).where(ConfigSnapshot.guild_id==guild_id).order_by(ConfigSnapshot.id.desc()).limit(limit))).scalars())
