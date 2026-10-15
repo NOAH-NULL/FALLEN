@@ -252,3 +252,45 @@ async def test_security_state_restore_recreates_missing_baseline_role():
     guild.create_role.assert_awaited_once()
     assert guild.create_role.await_args.kwargs["name"] == "Moderator"
     assert guild.create_role.await_args.kwargs["permissions"].value == 8
+
+
+@pytest.mark.asyncio
+async def test_security_state_restore_recreates_category_before_its_children():
+    baseline = SimpleNamespace(payload={
+        "roles": {},
+        "channels": {
+            "502": {
+                "type": "TextChannel", "is_news": False, "name": "inside-category",
+                "position": 2, "category_id": 501, "topic": None,
+                "nsfw": False, "slowmode_delay": 0, "overwrites": {},
+            },
+            "501": {
+                "type": "CategoryChannel", "is_news": False, "name": "restored-category",
+                "position": 1, "category_id": None, "overwrites": {},
+            },
+        },
+    })
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+
+    class RecoveryHarness:
+        def __init__(self):
+            self.extreme = extreme
+
+        _recreate_missing_security_resource = Bot._recreate_missing_security_resource
+
+    category = SimpleNamespace(id=601)
+    text_channel = SimpleNamespace(id=602)
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.return_value = None
+    guild.get_role.return_value = None
+    guild.get_member.return_value = None
+    guild.create_category = AsyncMock(return_value=category)
+    guild.create_text_channel = AsyncMock(return_value=text_channel)
+
+    restored = await Bot.restore_security_state(RecoveryHarness(), guild)
+
+    assert restored["channels"] == 2
+    guild.create_category.assert_awaited_once()
+    guild.create_text_channel.assert_awaited_once()
+    assert guild.create_text_channel.await_args.kwargs["category"] is category
