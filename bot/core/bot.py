@@ -275,19 +275,13 @@ class Bot(commands.AutoShardedBot):
                 for role in guild.roles if not role.is_default()},
         }
         if merge_resource:
-            # Resource-create events must add only the new object. Replacing the
-            # whole snapshot here could bless an attacker-renamed channel or
-            # otherwise overwrite the trusted baseline for existing resources.
-            previous = await self.extreme.snapshot_get(guild.id, name)
-            if previous and isinstance(previous.payload, dict):
-                merged = deepcopy(previous.payload)
-                group, resource_id = merge_resource
-                merged.setdefault("channels", {})
-                merged.setdefault("roles", {})
-                current = payload.get(group, {}).get(str(resource_id))
-                if current is not None:
-                    merged[group][str(resource_id)] = current
-                payload = merged
+            # Merge under the snapshot row lock. This preserves trusted metadata
+            # for existing resources and prevents concurrent channel-create
+            # events from overwriting each other's baseline updates.
+            group, resource_id = merge_resource
+            return await self.extreme.snapshot_merge_resource(
+                guild.id, created_by, name, payload, group, resource_id
+            )
         return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
 
     async def _recreate_missing_security_resource(
