@@ -1,6 +1,7 @@
 import asyncio
 import random
 import logging
+from copy import deepcopy
 from collections import defaultdict, deque
 import discord
 from discord.ext import commands
@@ -245,7 +246,9 @@ class Bot(commands.AutoShardedBot):
         )
         return changed
 
-    async def snapshot_security_state(self, guild, created_by=0, name="__security_state__"):
+    async def snapshot_security_state(
+        self, guild, created_by=0, name="__security_state__", merge_resource=None
+    ):
         payload = {
             "channels": {str(ch.id): {
                 "type": type(ch).__name__,
@@ -271,6 +274,20 @@ class Bot(commands.AutoShardedBot):
                 "colour": role.colour.value, "hoist": role.hoist, "mentionable": role.mentionable}
                 for role in guild.roles if not role.is_default()},
         }
+        if merge_resource:
+            # Resource-create events must add only the new object. Replacing the
+            # whole snapshot here could bless an attacker-renamed channel or
+            # otherwise overwrite the trusted baseline for existing resources.
+            previous = await self.extreme.snapshot_get(guild.id, name)
+            if previous and isinstance(previous.payload, dict):
+                merged = deepcopy(previous.payload)
+                group, resource_id = merge_resource
+                merged.setdefault("channels", {})
+                merged.setdefault("roles", {})
+                current = payload.get(group, {}).get(str(resource_id))
+                if current is not None:
+                    merged[group][str(resource_id)] = current
+                payload = merged
         return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
 
     async def _recreate_missing_security_resource(
@@ -488,6 +505,59 @@ class Bot(commands.AutoShardedBot):
                     restored["channels"] += 1
                 except (discord.HTTPException, discord.Forbidden):
                     continue
+        # Re-key restored resources to their new Discord IDs. Otherwise the
+        # old IDs remain absent from the baseline and every later recovery would
+        # recreate duplicates. Also update category and role-overwrite references.
+        if recreated_channels or recreated_roles:
+            updated_payload = deepcopy(snapshot.payload)
+            channels_payload = updated_payload.setdefault("channels", {})
+            roles_payload = updated_payload.setdefault("roles", {})
+            for old_id, role in recreated_roles.items():
+                data = roles_payload.pop(str(old_id), None)
+                if data is not None:
+                    roles_payload[str(role.id)] = data
+            for old_id, channel in recreated_channels.items():
+                data = channels_payload.pop(str(old_id), None)
+                if data is not None:
+                    category_id = data.get("category_id")
+                    if category_id is not None and int(category_id) in recreated_channels:
+                        data["category_id"] = recreated_channels[int(category_id)].id
+                    overwrites = data.get("overwrites") or {}
+                    remapped = {}
+                    for target_id, overwrite_data in overwrites.items():
+                        try:
+                            target_int = int(target_id)
+                        except (TypeError, ValueError):
+                            remapped[target_id] = overwrite_data
+                            continue
+                        replacement = recreated_roles.get(target_int)
+                        remapped[str(replacement.id if replacement is not None else target_int)] = overwrite_data
+                    data["overwrites"] = remapped
+                    channels_payload[str(channel.id)] = data
+            # Existing channels may reference a role/category that was recreated.
+            for data in channels_payload.values():
+                if not isinstance(data, dict):
+                    continue
+                category_id = data.get("category_id")
+                try:
+                    if category_id is not None and int(category_id) in recreated_channels:
+                        data["category_id"] = recreated_channels[int(category_id)].id
+                except (TypeError, ValueError):
+                    pass
+                overwrites = data.get("overwrites") or {}
+                remapped = {}
+                for target_id, overwrite_data in overwrites.items():
+                    try:
+                        target_int = int(target_id)
+                    except (TypeError, ValueError):
+                        remapped[target_id] = overwrite_data
+                        continue
+                    replacement = recreated_roles.get(target_int)
+                    remapped[str(replacement.id if replacement is not None else target_int)] = overwrite_data
+                data["overwrites"] = remapped
+            await self.extreme.snapshot_save(
+                guild.id, guild.me.id if guild.me else 0, name, updated_payload
+            )
         return restored
 
     async def quarantine_member(self, guild, member, reason="Fallen anti-nuke quarantine"):
@@ -771,6 +841,28 @@ class Bot(commands.AutoShardedBot):
             if await self.extreme.snapshot_get(guild.id, '__security_state__') is None:
                 try: await self.snapshot_security_state(guild, guild.me.id if guild.me else 0)
                 except Exception: log.exception('security baseline snapshot failed guild=%s', guild.id)
+    async def on_guild_channel_create(self, channel):
+        try:
+            await self.snapshot_security_state(
+                channel.guild,
+                channel.guild.me.id if channel.guild.me else 0,
+                merge_resource=("channels", channel.id),
+            )
+        except Exception:
+            log.exception("security baseline update failed for new channel guild=%s channel=%s", channel.guild.id, channel.id)
+
+    async def on_guild_role_create(self, role):
+        if role.is_default():
+            return
+        try:
+            await self.snapshot_security_state(
+                role.guild,
+                role.guild.me.id if role.guild.me else 0,
+                merge_resource=("roles", role.id),
+            )
+        except Exception:
+            log.exception("security baseline update failed for new role guild=%s role=%s", role.guild.id, role.id)
+
     async def on_guild_channel_delete(self, channel):
         guild = channel.guild
         actor = await self._audit_actor_for(guild, discord.AuditLogAction.channel_delete, channel.id)
