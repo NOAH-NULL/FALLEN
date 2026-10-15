@@ -846,7 +846,13 @@ class Bot(commands.AutoShardedBot):
     async def on_ready(self):
         GUILDS.set(len(self.guilds)); GATEWAY_LATENCY.set(self.latency); log.info('ready guilds=%d shards=%s ids=%s',len(self.guilds),self.shard_count,self.shard_ids)
         for guild in self.guilds:
-            await self.invites.refresh_guild(guild)
+            try:
+                await self.invites.refresh_guild(guild)
+            except Exception:
+                # Invite snapshots are best-effort. A Redis/Discord invite
+                # lookup failure must not prevent security baseline recovery
+                # for this guild or any later guild.
+                log.exception("invite snapshot refresh failed guild=%s", guild.id)
             try:
                 existing_baseline = await self.extreme.snapshot_get(guild.id, "__security_state__")
                 if existing_baseline is None:
