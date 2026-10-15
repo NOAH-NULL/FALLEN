@@ -351,3 +351,32 @@ async def test_restored_role_is_reapplied_to_existing_channel_overwrites():
     assert extreme.snapshot_save.await_args.args[3]["channels"]["901"]["overwrites"]["501"] == {
         "allow": permissions.value, "deny": 0
     }
+
+
+@pytest.mark.asyncio
+async def test_recovery_fails_closed_when_baseline_overwrites_are_missing():
+    resource = MagicMock(spec=discord.TextChannel)
+    resource.id = 15
+    resource.name = "attacker-name"
+    resource.category_id = None
+    resource.position = 8
+    resource.topic = None
+    resource.nsfw = False
+    resource.slowmode_delay = 0
+    resource.overwrites = {}
+    resource.is_news.return_value = False
+
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.return_value = None
+    guild.create_text_channel = AsyncMock()
+
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=SimpleNamespace(payload={
+        "channels": {"15": {"name": "trusted-name", "position": 1}},
+    })))
+    restored_id = await Bot.restore_deleted_resource(
+        SimpleNamespace(extreme=extreme), guild, resource, "channel_delete"
+    )
+
+    assert restored_id is None
+    guild.create_text_channel.assert_not_awaited()
