@@ -84,6 +84,10 @@ class RedisCache:
         """
         return int(await self.client.eval(script, 2, key, fence_key, token, ttl_ms))
 
+    async def fenced_lock_ttl_ms(self, key):
+        """Return the lease TTL in milliseconds (-2 missing, -1 no expiry)."""
+        return int(await self.client.pttl(key))
+
     async def renew_fenced_lock(self, key, token, fence, ttl_ms):
         value = f'{token}:{fence}'
         script = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end"

@@ -27,9 +27,19 @@ class MusicService:
     def configured(self) -> bool:
         return bool(self.url and self.password)
 
+    @property
+    def connected(self) -> bool:
+        """Return the actual Lavalink websocket state, not just node existence."""
+        if self.node is None:
+            return False
+        status = getattr(self.node, "status", None)
+        return getattr(status, "name", str(status)).upper() == "CONNECTED"
+
     async def start(self) -> bool:
         if not self.configured:
-            log.info("Music is disabled: LAVALINK_URL or LAVALINK_PASSWORD is missing")
+            log.info(
+                "Music is disabled: LAVALINK_URL or LAVALINK_PASSWORD is missing"
+            )
             return False
 
         node = wavelink.Node(
@@ -40,21 +50,41 @@ class MusicService:
         try:
             await wavelink.Pool.connect(client=self.bot, nodes=[node])
         except Exception:
-            log.exception("Could not connect to the configured Lavalink node")
+            log.exception("Could not initialize the configured Lavalink node")
             return False
 
+        # Pool.connect may return while Wavelink is still connecting. Keep the
+        # node reference so Wavelink can reconnect, but do not claim it is ready.
         self.node = node
-        log.info("Connected music node %s", node.identifier)
-        return True
+        if self.connected:
+            log.info("Connected music node %s", node.identifier)
+        else:
+            log.warning(
+                "Lavalink node %s was registered but is not connected yet; "
+                "music commands will remain unavailable until it connects. "
+                "Verify LAVALINK_URL, network reachability, and the password.",
+                node.identifier,
+            )
+        return self.connected
 
     async def close(self) -> None:
         if self.node is not None:
-            await wavelink.Pool.close()
-            self.node = None
+            try:
+                await wavelink.Pool.close()
+            finally:
+                self.node = None
 
-    async def play(self, guild: discord.Guild, voice_channel: discord.VoiceChannel, query: str) -> tuple[int, str]:
-        if self.node is None:
-            raise MusicError("Music is unavailable. Configure and start the Lavalink node first.")
+    async def play(
+        self,
+        guild: discord.Guild,
+        voice_channel: discord.VoiceChannel,
+        query: str,
+    ) -> tuple[int, str]:
+        if self.node is None or not self.connected:
+            raise MusicError(
+                "Music is temporarily unavailable because the Lavalink node "
+                "is not connected. Please try again after the node reconnects."
+            )
 
         try:
             results = await wavelink.Playable.search(query, node=self.node)

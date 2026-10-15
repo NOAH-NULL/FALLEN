@@ -87,8 +87,13 @@ class Music(commands.Cog):
         node = self.bot.music.node
         if node is None:
             message = "Music is offline. Configure a reachable Lavalink v4 node."
-        else:
+        elif self.bot.music.connected:
             message = f"Music node **{node.identifier}** is connected."
+        else:
+            message = (
+                f"Music node **{node.identifier}** is not connected yet. "
+                "Check the Lavalink URL, server availability, and password."
+            )
         await interaction.response.send_message(message, ephemeral=True)
 
     @commands.Cog.listener()
