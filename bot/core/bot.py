@@ -248,6 +248,8 @@ class Bot(commands.AutoShardedBot):
     async def snapshot_security_state(self, guild, created_by=0, name="__security_state__"):
         payload = {
             "channels": {str(ch.id): {
+                "type": type(ch).__name__,
+                "is_news": bool(ch.is_news()) if isinstance(ch, discord.TextChannel) else False,
                 "name": ch.name,
                 "position": ch.position,
                 "category_id": getattr(ch, "category_id", None),
@@ -271,15 +273,129 @@ class Bot(commands.AutoShardedBot):
         }
         return await self.extreme.snapshot_save(guild.id, created_by, name, payload)
 
+    async def _recreate_missing_security_resource(self, guild, resource_id, action, data):
+        """Recreate a missing channel or role using only the trusted startup baseline.
+
+        Discord assigns a new ID to recreated resources, so this restores the
+        resource itself and its saved configuration, not old role membership or
+        references that still point at the deleted ID.
+        """
+        if not isinstance(data, dict) or not data.get("name"):
+            return None
+
+        name = str(data["name"])[:100]
+        try:
+            overwrites = {}
+            if action == "channel_delete":
+                for target_id, overwrite_data in (data.get("overwrites") or {}).items():
+                    try:
+                        target = await Bot._resolve_permission_target(guild, target_id)
+                        if target is None or not isinstance(overwrite_data, dict):
+                            continue
+                        allow = discord.Permissions(int(overwrite_data.get("allow", 0)))
+                        deny = discord.Permissions(int(overwrite_data.get("deny", 0)))
+                        overwrites[target] = discord.PermissionOverwrite.from_pair(allow, deny)
+                    except (TypeError, ValueError):
+                        continue
+
+            if action == "role_delete":
+                if not guild.me:
+                    return None
+                permissions = discord.Permissions(int(data.get("permissions", 0)))
+                colour = discord.Colour(int(data.get("colour", 0)))
+                role = await guild.create_role(
+                    name=name,
+                    permissions=permissions,
+                    colour=colour,
+                    hoist=bool(data.get("hoist", False)),
+                    mentionable=bool(data.get("mentionable", False)),
+                    reason="Fallen anti-nuke restoration",
+                )
+                try:
+                    target_position = max(1, min(int(data.get("position", 1)), guild.me.top_role.position - 1))
+                    await role.edit(position=target_position, reason="Fallen anti-nuke restoration")
+                except (discord.HTTPException, TypeError, ValueError):
+                    pass
+                return role
+
+            if action != "channel_delete":
+                return None
+
+            channel_type = data.get("type")
+            category_id = data.get("category_id")
+            category = guild.get_channel(int(category_id)) if category_id else None
+            position = max(0, int(data.get("position", 0)))
+
+            if channel_type == "CategoryChannel":
+                return await guild.create_category(
+                    name, position=position, overwrites=overwrites,
+                    reason="Fallen anti-nuke restoration",
+                )
+            if channel_type == "VoiceChannel":
+                return await guild.create_voice_channel(
+                    name, category=category, position=position, overwrites=overwrites,
+                    bitrate=int(data.get("bitrate") or 64000),
+                    user_limit=int(data.get("user_limit") or 0),
+                    reason="Fallen anti-nuke restoration",
+                )
+            if channel_type == "StageChannel":
+                return await guild.create_stage_channel(
+                    name, category=category, position=position, overwrites=overwrites,
+                    bitrate=int(data.get("bitrate") or 64000),
+                    user_limit=int(data.get("user_limit") or 0),
+                    reason="Fallen anti-nuke restoration",
+                )
+            if channel_type == "TextChannel":
+                # Announcement channels need their original channel type; do not
+                # silently recreate one as an ordinary text channel.
+                if data.get("is_news"):
+                    log.warning(
+                        "anti-nuke cannot recreate announcement channel from baseline guild=%s channel=%s",
+                        guild.id, resource_id,
+                    )
+                    return None
+                return await guild.create_text_channel(
+                    name,
+                    category=category,
+                    topic=data.get("topic"),
+                    position=position,
+                    nsfw=bool(data.get("nsfw", False)),
+                    slowmode_delay=max(0, int(data.get("slowmode_delay") or 0)),
+                    overwrites=overwrites,
+                    reason="Fallen anti-nuke restoration",
+                )
+
+            log.warning(
+                "anti-nuke cannot recreate unsupported channel type from baseline guild=%s channel=%s type=%s",
+                guild.id, resource_id, channel_type,
+            )
+            return None
+        except (discord.HTTPException, TypeError, ValueError):
+            log.exception(
+                "anti-nuke baseline recreation failed guild=%s action=%s target=%s",
+                getattr(guild, "id", None), action, resource_id,
+            )
+            return None
+
     async def restore_security_state(self, guild, name="__security_state__"):
         snapshot = await self.extreme.snapshot_get(guild.id, name)
-        if not snapshot:
+        if not snapshot or not isinstance(snapshot.payload, dict):
             return {"roles": 0, "channels": 0}
         restored = {"roles": 0, "channels": 0}
         role_data = snapshot.payload.get("roles", {})
         for role_id, data in role_data.items():
-            role = guild.get_role(int(role_id))
-            if not role or role >= guild.me.top_role:
+            try:
+                role = guild.get_role(int(role_id))
+            except (TypeError, ValueError):
+                continue
+            if not role:
+                recreated = await self._recreate_missing_security_resource(
+                    guild, role_id, "role_delete", data
+                )
+                if recreated is not None:
+                    restored["roles"] += 1
+                continue
+            if not guild.me or role >= guild.me.top_role:
                 continue
             try:
                 await role.edit(
@@ -297,7 +413,8 @@ class Bot(commands.AutoShardedBot):
         role_positions = {
             guild.get_role(int(role_id)): int(data.get("position", 0))
             for role_id, data in role_data.items()
-            if guild.get_role(int(role_id)) and guild.get_role(int(role_id)) < guild.me.top_role
+            if guild.get_role(int(role_id)) and guild.me
+            and guild.get_role(int(role_id)) < guild.me.top_role
         }
         if role_positions:
             try:
@@ -308,12 +425,18 @@ class Bot(commands.AutoShardedBot):
             except discord.HTTPException:
                 pass
 
-        # Restore overwrites for channels that still exist. Missing targets are
-        # skipped because their Discord object no longer exists.
         channel_data = snapshot.payload.get("channels", {})
         for channel_id, data in channel_data.items():
-            channel = guild.get_channel(int(channel_id))
+            try:
+                channel = guild.get_channel(int(channel_id))
+            except (TypeError, ValueError):
+                continue
             if channel is None:
+                recreated = await self._recreate_missing_security_resource(
+                    guild, channel_id, "channel_delete", data
+                )
+                if recreated is not None:
+                    restored["channels"] += 1
                 continue
             try:
                 await channel.edit(
