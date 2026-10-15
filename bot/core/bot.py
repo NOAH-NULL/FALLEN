@@ -673,20 +673,26 @@ class Bot(commands.AutoShardedBot):
                     baseline = candidate
         except Exception:
             log.exception("security baseline lookup failed guild=%s target=%s", guild.id, getattr(resource, "id", None))
-        if getattr(self, "extreme", None) is not None and not baseline:
-            log.error(
-                "resource recovery skipped because no trusted baseline entry exists guild=%s target=%s",
-                guild.id, getattr(resource, "id", None),
-            )
-            return None
-        # Prefer the last trusted baseline for mutable metadata. The deleted
-        # event object can contain attacker-modified properties (for example,
-        # a renamed channel deleted immediately afterward).
+        if getattr(self, "extreme", None) is not None:
+            required_fields = {"name", "position"}
+            if action == "channel_delete":
+                required_fields.add("overwrites")
+            elif action == "role_delete":
+                required_fields.update({"permissions", "colour", "hoist", "mentionable"})
+            if not baseline or any(field not in baseline for field in required_fields):
+                log.error(
+                    "resource recovery skipped because trusted baseline metadata is incomplete guild=%s target=%s action=%s",
+                    guild.id, getattr(resource, "id", None), action,
+                )
+                return None
+        # Never fall back to mutable event metadata when a security baseline
+        # exists. The delete event can contain properties changed by the actor
+        # immediately before deletion, including role permissions/overwrites.
         saved_name = baseline.get("name", resource.name)
         saved_position = baseline.get("position", resource.position)
-        saved_category_id = baseline.get("category_id", getattr(resource, "category_id", None))
+        saved_category_id = baseline.get("category_id") if getattr(self, "extreme", None) is not None else getattr(resource, "category_id", None)
         saved_category = guild.get_channel(saved_category_id) if saved_category_id else None
-        saved_overwrites = getattr(resource, "overwrites", {})
+        saved_overwrites = {} if getattr(self, "extreme", None) is not None else getattr(resource, "overwrites", {})
         if action == "channel_delete" and isinstance(baseline.get("overwrites"), dict):
             saved_overwrites = {}
             for target_id, data in baseline["overwrites"].items():
@@ -727,7 +733,6 @@ class Bot(commands.AutoShardedBot):
                     overwrites=saved_overwrites,
                     bitrate=baseline.get("bitrate", resource.bitrate),
                     user_limit=baseline.get("user_limit", resource.user_limit),
-                    rtc_region=baseline.get("rtc_region", resource.rtc_region),
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
@@ -745,22 +750,22 @@ class Bot(commands.AutoShardedBot):
                 created = await guild.create_text_channel(
                     saved_name,
                     category=saved_category,
-                    topic=baseline.get("topic", resource.topic),
+                    topic=baseline.get("topic"),
                     position=saved_position,
-                    nsfw=baseline.get("nsfw", resource.nsfw),
-                    slowmode_delay=baseline.get("slowmode_delay", resource.slowmode_delay),
+                    nsfw=bool(baseline.get("nsfw", False)),
+                    slowmode_delay=max(0, int(baseline.get("slowmode_delay") or 0)),
                     overwrites=saved_overwrites,
                     reason='Fallen anti-nuke restoration',
                 )
                 return created.id
 
             if action == 'role_delete' and hasattr(resource, 'name'):
-                permissions = discord.Permissions(int(baseline.get("permissions", resource.permissions.value)))
-                colour = discord.Colour(int(baseline.get("colour", resource.colour.value)))
+                permissions = discord.Permissions(int(baseline.get("permissions", 0)))
+                colour = discord.Colour(int(baseline.get("colour", 0)))
                 role = await guild.create_role(
                     name=saved_name, permissions=permissions, colour=colour,
-                    hoist=baseline.get("hoist", resource.hoist),
-                    mentionable=baseline.get("mentionable", resource.mentionable),
+                    hoist=bool(baseline.get("hoist", False)),
+                    mentionable=bool(baseline.get("mentionable", False)),
                     reason='Fallen anti-nuke restoration',
                 )
                 try:
