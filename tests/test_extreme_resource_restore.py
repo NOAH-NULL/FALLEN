@@ -172,3 +172,83 @@ async def test_deleted_channel_recovery_fetches_uncached_member_overwrite_target
     assert restored_id == 102
     guild.fetch_member.assert_awaited_once_with(555)
     assert member in guild.create_text_channel.await_args.kwargs["overwrites"]
+
+
+@pytest.mark.asyncio
+async def test_security_state_restore_recreates_all_missing_baseline_text_channels():
+    baseline = SimpleNamespace(payload={
+        "roles": {},
+        "channels": {
+            "201": {
+                "type": "TextChannel", "is_news": False, "name": "rules",
+                "position": 1, "category_id": None, "topic": "Server rules",
+                "nsfw": False, "slowmode_delay": 0, "overwrites": {},
+            },
+            "202": {
+                "type": "TextChannel", "is_news": False, "name": "announcements",
+                "position": 2, "category_id": None, "topic": None,
+                "nsfw": False, "slowmode_delay": 5, "overwrites": {},
+            },
+        },
+    })
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+
+    class RecoveryHarness:
+        def __init__(self):
+            self.extreme = extreme
+
+        _recreate_missing_security_resource = Bot._recreate_missing_security_resource
+
+    guild = MagicMock()
+    guild.id = 123
+    guild.get_channel.return_value = None
+    guild.get_role.return_value = None
+    guild.get_member.return_value = None
+    guild.create_text_channel = AsyncMock(side_effect=[
+        SimpleNamespace(id=301), SimpleNamespace(id=302)
+    ])
+
+    restored = await Bot.restore_security_state(RecoveryHarness(), guild)
+
+    assert restored["channels"] == 2
+    assert [call.args[0] for call in guild.create_text_channel.await_args_list] == [
+        "rules", "announcements"
+    ]
+    assert guild.create_text_channel.await_args_list[0].kwargs["topic"] == "Server rules"
+    assert guild.create_text_channel.await_args_list[1].kwargs["slowmode_delay"] == 5
+
+
+@pytest.mark.asyncio
+async def test_security_state_restore_recreates_missing_baseline_role():
+    baseline = SimpleNamespace(payload={
+        "roles": {
+            "401": {
+                "name": "Moderator", "position": 3, "permissions": 8,
+                "colour": 123, "hoist": True, "mentionable": False,
+            },
+        },
+        "channels": {},
+    })
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+
+    class RecoveryHarness:
+        def __init__(self):
+            self.extreme = extreme
+
+        _recreate_missing_security_resource = Bot._recreate_missing_security_resource
+
+    created_role = MagicMock()
+    created_role.edit = AsyncMock()
+    guild = MagicMock()
+    guild.id = 123
+    guild.me.top_role.position = 10
+    guild.get_role.return_value = None
+    guild.create_role = AsyncMock(return_value=created_role)
+    guild.edit_role_positions = AsyncMock()
+
+    restored = await Bot.restore_security_state(RecoveryHarness(), guild)
+
+    assert restored["roles"] == 1
+    guild.create_role.assert_awaited_once()
+    assert guild.create_role.await_args.kwargs["name"] == "Moderator"
+    assert guild.create_role.await_args.kwargs["permissions"].value == 8
