@@ -191,7 +191,7 @@ async def test_security_state_restore_recreates_all_missing_baseline_text_channe
             },
         },
     })
-    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline), snapshot_save=AsyncMock())
 
     class RecoveryHarness:
         def __init__(self):
@@ -229,7 +229,7 @@ async def test_security_state_restore_recreates_missing_baseline_role():
         },
         "channels": {},
     })
-    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline), snapshot_save=AsyncMock())
 
     class RecoveryHarness:
         def __init__(self):
@@ -270,7 +270,7 @@ async def test_security_state_restore_recreates_category_before_its_children():
             },
         },
     })
-    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline))
+    extreme = SimpleNamespace(snapshot_get=AsyncMock(return_value=baseline), snapshot_save=AsyncMock())
 
     class RecoveryHarness:
         def __init__(self):
