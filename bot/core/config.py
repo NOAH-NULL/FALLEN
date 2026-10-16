@@ -27,7 +27,7 @@ def normalize_database_url(url: str) -> str:
 @dataclass(frozen=True)
 class Settings:
     log_level: str=os.getenv('LOG_LEVEL','INFO')
-    environment: str=os.getenv('ENVIRONMENT','development')
+    environment: str=os.getenv('ENVIRONMENT',os.getenv('RAILWAY_ENVIRONMENT','development'))
     otel_enabled: bool=_b('OTEL_ENABLED',False)
     otel_exporter_endpoint: str=os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT','')
     otel_service_name: str=os.getenv('OTEL_SERVICE_NAME','titan-discord-bot')
