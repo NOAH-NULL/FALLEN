@@ -81,8 +81,40 @@ class Bot(commands.AutoShardedBot):
             self.settings.shard_count,
             recommended_shard_count,
         )
-        await self.shard_leases.acquire(shard_ids)
-        await self.music.start(); await self.greetings.start(); await self.reactions.start(); await self.greeting_worker.start(); await self.invites.start(); await self.gateway_workers.start(); await self.invalidation.start(); await self.scheduler.start(); await self.dashboard.start()
+        log.info(
+            "Preparing shard leases instance_id=%s shard_ids=%s configured_shard_count=%s "
+            "recommended_shard_count=%s",
+            self.settings.instance_id,
+            shard_ids,
+            self.settings.shard_count,
+            recommended_shard_count,
+        )
+        try:
+            await self.shard_leases.acquire(shard_ids)
+        except Exception:
+            log.exception(
+                "Startup blocked while acquiring shard leases instance_id=%s shard_ids=%s. "
+                "Do not force-delete Redis lease keys: first verify Railway has only one "
+                "active bot process and that no second service is using the same shard IDs.",
+                self.settings.instance_id,
+                shard_ids,
+            )
+            raise
+
+        # Lavalink is optional: MusicService.start() logs connection failures and returns
+        # False without blocking Discord gateway startup.
+        music_ready = await self.music.start()
+        if not music_ready:
+            log.warning("FALLEN is continuing without music; Discord bot startup is independent of Lavalink")
+
+        await self.greetings.start()
+        await self.reactions.start()
+        await self.greeting_worker.start()
+        await self.invites.start()
+        await self.gateway_workers.start()
+        await self.invalidation.start()
+        await self.scheduler.start()
+        await self.dashboard.start()
         for ext in EXTENSIONS:
             await self.load_extension(ext)
             log.info("loaded command extension=%s", ext)
