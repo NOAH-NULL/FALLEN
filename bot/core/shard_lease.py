@@ -96,6 +96,12 @@ class ShardLeaseManager:
         try:
             for shard_id in shard_ids:
                 key = f"shard-lease:{shard_id}"
+                log.info(
+                    "Attempting shard lease acquisition owner=%s shard=%s ttl_ms=%s",
+                    self.owner,
+                    shard_id,
+                    self.ttl_ms,
+                )
 
                 fence = await self.cache.acquire_fenced_lock(
                     key,
@@ -112,6 +118,12 @@ class ShardLeaseManager:
                     )
 
                 fence = int(fence)
+                log.info(
+                    "Acquired shard lease owner=%s shard=%s fence=%s",
+                    self.owner,
+                    shard_id,
+                    fence,
+                )
                 acquired.append((shard_id, key, fence))
 
             self.fences = {
