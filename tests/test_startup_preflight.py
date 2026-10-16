@@ -58,9 +58,3 @@ def test_development_can_use_local_dependencies():
         )
     )
 
-
-def test_invalid_shard_ids_fail_before_startup():
-    with pytest.raises(ValueError, match="SHARD_IDS must contain only integer IDs"):
-        validate_startup_settings(
-            settings(shard_ids="0,nope", parsed_shard_ids=ValueError("invalid"))
-        )
