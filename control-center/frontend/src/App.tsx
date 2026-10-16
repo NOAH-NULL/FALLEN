@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Activity, AudioWaveform, Bot, ChartNoAxesCombined, ChevronDown,
+  Activity, Bot, ChartNoAxesCombined, ChevronDown,
   CircleHelp, Command, Gauge, LayoutDashboard, LockKeyhole, Menu,
   MessageSquareText, ScrollText, Server, Settings2, ShieldCheck,
   Sparkles, Users, X
