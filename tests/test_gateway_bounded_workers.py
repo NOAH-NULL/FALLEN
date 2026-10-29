@@ -57,7 +57,7 @@ async def test_stale_normal_events_are_shed_without_blocking_workers():
     bot = FakeBot()
     pool = GatewayWorkerPool(bot, q, workers=1, guild_concurrency=1, max_event_age=0.5)
     await pool.start()
-    stale = GatewayEvent('message', Payload(1), False, 0.0)
+    stale = GatewayEvent('member_remove', Payload(1), False, 0.0)
     q.normal.put_nowait(stale)
     await asyncio.wait_for(q.drain(2), 2)
     assert bot.max_active == 0

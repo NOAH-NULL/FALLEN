@@ -218,7 +218,7 @@ class GreetingWorker:
         if getattr(member, "guild", None) is None:
             raise ValueError("Greetings can only be sent in a server.")
 
-        cfg = await self.bot.guild_config.get(member.guild.id)
+        cfg = await self.bot.guild_config.get(member.guild.id, include_media=True)
         settings = await self.bot.welcome_engine.get(member.guild.id, cfg)
         if kind == "goodbye":
             # Goodbye messages are public-only, but still honor their own toggle

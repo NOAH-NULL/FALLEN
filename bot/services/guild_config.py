@@ -20,10 +20,10 @@ class GuildConfigService:
 
     @staticmethod
     def _cache_safe(config):
+        # Binary media is loaded only for rendering and never stored in Redis.
         for name in ('welcome_background_data', 'goodbye_background_data'):
-            value = config.get(name)
-            if isinstance(value, (bytes, bytearray, memoryview)):
-                config[name] = 'base64:' + base64.b64encode(value).decode('ascii')
+            if name in config:
+                config[name] = None
         for name, value in config.items():
             if isinstance(value, (date, datetime)):
                 config[name] = value.isoformat()
@@ -46,23 +46,39 @@ class GuildConfigService:
             await session.commit()
         await self.invalidate(gid)
 
-    async def get(self, gid):
+    async def get(self, gid, include_media=False):
         key = guild_key(gid)
+
+        async def load(include_blobs=True):
+            async with self.db.session() as s:
+                columns = [
+                    column for column in GuildConfig.__table__.c
+                    if include_blobs or column.name not in {
+                        'welcome_background_data', 'goodbye_background_data'
+                    }
+                ]
+                result = await s.execute(
+                    select(*columns).where(GuildConfig.guild_id == gid)
+                )
+                row = result.mappings().first()
+                config = dict(row) if row else self._default(gid)
+                return config if include_blobs else self._cache_safe(config)
+
+        # Only the greeting renderer needs media bytes; bypass Redis for them.
+        if include_media:
+            return await load(include_blobs=True)
+
         async def read():
             return await self.cache.get_json(key)
-        async def load():
-            async with self.db.session() as s:
-                result = await s.execute(select(*GuildConfig.__table__.c).where(GuildConfig.guild_id == gid))
-                row = result.mappings().first()
-                return self._cache_safe(dict(row) if row else self._default(gid))
+
+        async def load_cached():
+            return await load(include_blobs=False)
+
         try:
-            return await self.singleflight.run(key, load, read)
+            return await self.singleflight.run(key, load_cached, read)
         except Exception:
-            # Redis is an optimization, not a prerequisite for command handling.
-            # A cache outage or malformed cache entry must not make every
-            # message/member event fail while PostgreSQL is still available.
             log.exception("guild config cache path failed; loading from PostgreSQL guild=%s", gid)
-            return await load()
+            return await load_cached()
 
     async def invalidate(self, gid):
         key = guild_key(gid)

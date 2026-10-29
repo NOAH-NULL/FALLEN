@@ -51,7 +51,8 @@ class GatewayEventQueue:
         current_load = self.qsize
 
         # Proactive Backpressure: If queue exceeds 80% capacity, drop non-critical/analytics events early
-        if not critical and total_capacity > 0 and (current_load / total_capacity) >= 0.80:
+        if (not critical and kind not in {'message', 'message_edit'}
+                and total_capacity > 0 and (current_load / total_capacity) >= 0.80):
             self.dropped += 1
             return False
 

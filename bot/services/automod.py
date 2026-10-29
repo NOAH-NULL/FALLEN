@@ -172,7 +172,10 @@ class AutoModService:
         return score * math.exp(-config['decay'] * max(0.0, now - last))
 
     def check(self, gid, uid, content, limit=6, window=8):
-        now = time.monotonic(); q = self._events[(gid, uid)]
-        while q and now-q[0] > window: q.popleft()
+        """Detect rate-based flooding only; lexical simplicity is not spam."""
+        now = time.monotonic()
+        q = self._events[(gid, uid)]
+        while q and now - q[0] > window:
+            q.popleft()
         q.append(now)
-        return len(q) > limit or (len(content or '') > 12 and len(set((content or '').lower().split())) <= 2)
+        return len(q) > limit

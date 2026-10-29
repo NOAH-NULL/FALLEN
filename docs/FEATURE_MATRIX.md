@@ -12,4 +12,4 @@
 | 81-90 | Tickets | categories/forms/claiming/priority/transcripts/ratings/statistics/auto-close/staff notes/reopen | `TicketService`, V16 ticket model |
 | 91-100 | Administration | snapshots/import-export/setup, permission/hierarchy/channel checks, health/diagnostics/validation, backup/restore | `ExtremeService`, core health, snapshots |
 
-The numbered list remains exactly the 100-feature contract from V16. Capabilities that require an external provider (for example actual Lavalink audio playback) remain provider adapters rather than fake local implementations.
+The numbered list is a capability catalog, not a claim that every item is currently implemented. Check the runtime's implemented-feature allowlist before treating a capability as active. Capabilities that require an external provider (for example actual Lavalink audio playback) remain provider adapters rather than fake local implementations.

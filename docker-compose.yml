@@ -1,4 +1,13 @@
 services:
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-discordbot}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-discordbot}"
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
   bot:
     build: .
     restart: unless-stopped
@@ -8,7 +17,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       DB_USE_PGBOUNCER: "true"
     depends_on:
-      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
       pgbouncer: {condition: service_started}
       redis: {condition: service_healthy}
       otel-collector: {condition: service_started}

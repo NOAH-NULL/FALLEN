@@ -125,7 +125,8 @@ class GatewayWorkerPool:
             fence_token = None
             try:
                 now = asyncio.get_running_loop().time()
-                if not event.critical and self.max_event_age > 0 and (now - event.enqueued_at) > self.max_event_age:
+                if (not event.critical and event.kind not in {'message', 'message_edit'}
+                        and self.max_event_age > 0 and (now - event.enqueued_at) > self.max_event_age):
                     log.warning('dropping stale gateway event age=%.2fs kind=%s', now - event.enqueued_at, event.kind)
                     continue
                 guild_id = self._guild_id(event)

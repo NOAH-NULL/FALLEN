@@ -1,6 +1,6 @@
 # Fallen V16 capability matrix
 
-Fallen V16 contains exactly 100 additional Discord capabilities across nine domains. Unlike the original V16 snapshot, these are backed by durable services/models and runtime hooks where applicable; the catalog is not a list of empty commands.
+Fallen V16 maintains a 100-entry capability catalog across nine domains. The catalog is not proof that every entry is implemented or safe to enable. Only capabilities listed in the runtime's implemented-feature allowlist should be treated as active; others remain planned/catalog-only.
 
 See `docs/FEATURE_MATRIX.md` for the complete 1–100 list and `docs/ARCHITECTURE.md` for implementation boundaries.
 
@@ -18,4 +18,4 @@ See `docs/FEATURE_MATRIX.md` for the complete 1–100 list and `docs/ARCHITECTUR
 - Named configuration snapshots and restore.
 - Database-backed models and Alembic migrations.
 - Secret-safe PgBouncer container bootstrap.
-- Regression tests for architecture and the full 100-feature catalog.
+- Regression tests for architecture and feature-catalog consistency.

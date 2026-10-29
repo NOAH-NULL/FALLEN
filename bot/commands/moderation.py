@@ -119,14 +119,18 @@ class Moderation(commands.Cog):
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_channels=True)
     async def lock(self, i):
-        await i.channel.set_permissions(i.guild.default_role, send_messages=False)
+        overwrite = i.channel.overwrites_for(i.guild.default_role)
+        overwrite.send_messages = False
+        await i.channel.set_permissions(i.guild.default_role, overwrite=overwrite)
         await i.response.send_message(embed=success_embed('Channel locked', f'{i.channel.mention} is now locked for @everyone.'))
 
     @app_commands.command(name='unlock', description='Unlock the current channel')
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_channels=True)
     async def unlock(self, i):
-        await i.channel.set_permissions(i.guild.default_role, send_messages=None)
+        overwrite = i.channel.overwrites_for(i.guild.default_role)
+        overwrite.send_messages = None
+        await i.channel.set_permissions(i.guild.default_role, overwrite=overwrite)
         await i.response.send_message(embed=success_embed('Channel unlocked', f'{i.channel.mention} has returned to its inherited permissions.'))
 
 
