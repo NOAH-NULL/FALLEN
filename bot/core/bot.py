@@ -839,33 +839,43 @@ class Bot(commands.AutoShardedBot):
             return
         now = asyncio.get_running_loop().time()
         self._prune_destructive_actions(now)
-        key = (guild.id, actor_id, action)
+        # Count destructive events across channel and role deletes so an actor
+        # cannot evade the threshold by alternating action types.
+        key = (guild.id, actor_id, "destructive")
         q = self._destructive_actions[key]
         q.append(now)
         while q and now - q[0] > 12:
             q.popleft()
-        await self.extreme.record_security(guild.id, action, actor_id=actor_id, target_id=target_id, details={"burst_count": len(q)})
-        if len(q) >= 3:
-            member = guild.get_member(actor_id)
-            if member and await self.extreme.enabled(guild.id, "automatic_lockdown"):
-                # Keep the durable baseline captured at startup. Taking a
-                # new snapshot after the destructive event would snapshot the
-                # compromised state and make restoration ineffective.
-                await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
-                # The baseline restore handles every missing resource in one
-                # pass. Calling restore_deleted_resource first would recreate
-                # this event's target twice because its old Discord ID remains
-                # absent from the baseline's channel/role map.
-                await self.restore_security_state(guild)
-                await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
+        await self.extreme.record_security(
+            guild.id, action, actor_id=actor_id, target_id=target_id,
+            details={"burst_count": len(q)},
+        )
+        if len(q) >= 3 and await self.extreme.enabled(guild.id, "automatic_lockdown"):
+            # The owner is the final authority; never let an anti-nuke burst
+            # attributed to the owner trigger quarantine, restore, or lockdown.
+            if actor_id == getattr(guild, "owner_id", None):
                 self._destructive_actions.pop(key, None)
+                return
+            member = guild.get_member(actor_id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(actor_id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    member = None
+            if member is not None:
+                await self.quarantine_member(guild, member, reason=f"Fallen anti-nuke: {action} burst")
+            # Recovery and containment must still run if the actor is uncached
+            # or cannot be fetched; failing attribution must not skip recovery.
+            await self.restore_security_state(guild)
+            await self.security_lockdown(guild.id, reason=f"Fallen anti-nuke containment: {action} burst by {actor_id}")
+            self._destructive_actions.pop(key, None)
 
     async def _audit_actor_for(self, guild, action, target_id):
         # Audit-log entries can lag the gateway event by a short interval.
         # Retry briefly before treating attribution as unknown.
         for attempt in range(3):
             try:
-                async for entry in guild.audit_logs(limit=8, action=action):
+                async for entry in guild.audit_logs(limit=25, action=action):
                     if getattr(entry.target, "id", None) == target_id:
                         return entry.user.id if entry.user else None
             except discord.HTTPException:
@@ -898,26 +908,22 @@ class Bot(commands.AutoShardedBot):
             except Exception:
                 log.exception("security baseline snapshot upgrade failed guild=%s", guild.id)
     async def on_guild_channel_create(self, channel):
-        try:
-            await self.snapshot_security_state(
-                channel.guild,
-                channel.guild.me.id if channel.guild.me else 0,
-                merge_resource=("channels", channel.id),
-            )
-        except Exception:
-            log.exception("security baseline update failed for new channel guild=%s channel=%s", channel.guild.id, channel.id)
+        # Do not automatically trust resources created after the startup
+        # baseline: an attacker-created channel must not become recoverable truth.
+        log.info(
+            "new channel requires trusted baseline review guild=%s channel=%s",
+            channel.guild.id, channel.id,
+        )
 
     async def on_guild_role_create(self, role):
         if role.is_default():
             return
-        try:
-            await self.snapshot_security_state(
-                role.guild,
-                role.guild.me.id if role.guild.me else 0,
-                merge_resource=("roles", role.id),
-            )
-        except Exception:
-            log.exception("security baseline update failed for new role guild=%s role=%s", role.guild.id, role.id)
+        # Newly created roles are intentionally not merged into the trusted
+        # anti-nuke baseline automatically.
+        log.info(
+            "new role requires trusted baseline review guild=%s role=%s",
+            role.guild.id, role.id,
+        )
 
     async def on_guild_channel_delete(self, channel):
         guild = channel.guild
