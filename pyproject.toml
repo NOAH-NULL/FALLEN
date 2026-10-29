@@ -16,4 +16,4 @@ python_version = "3.12"
 strict = true
 
 [tool.vercel]
-entrypoint = "control-center-api.app.main:app"
+entrypoint = "control_center_api.app.main:app"
