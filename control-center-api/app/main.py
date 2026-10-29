@@ -1,8 +1,8 @@
 """FALLEN Control Center API starter.
 
-This service provides a health endpoint and a server-side Discord OAuth flow.
-It intentionally does not expose bot/database data until authorization and
-least-privilege data adapters are implemented.
+OAuth credentials are exchanged server-side. Access tokens are kept in a
+process-local store, never inside the browser's signed cookie. Use Redis or a
+database-backed session store before running multiple production workers.
 """
 from __future__ import annotations
 
@@ -16,16 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-APP_ENV = os.getenv("APP_ENV", "development")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").rstrip("/")
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.getenv(
-    "DISCORD_REDIRECT_URI",
-    "http://localhost:8000/api/auth/callback",
-)
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "http://localhost:8000/api/auth/callback")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+# Development starter only. Replace with a shared, expiring server-side session
+# store (e.g. Redis) before horizontal scaling or production deployment.
+SERVER_SESSIONS: dict[str, dict] = {}
 
 app = FastAPI(title="FALLEN Control Center API", version="0.1.0")
 app.add_middleware(
@@ -51,32 +51,34 @@ def oauth_configured() -> bool:
 
 def require_oauth_config() -> None:
     if not oauth_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Discord OAuth is not configured on this server.",
-        )
+        raise HTTPException(status_code=503, detail="Discord OAuth is not configured on this server.")
+
+
+def session_data(request: Request) -> dict | None:
+    session_id = request.session.get("session_id")
+    if not isinstance(session_id, str):
+        return None
+    return SERVER_SESSIONS.get(session_id)
 
 
 def require_session(request: Request) -> dict:
-    user = request.session.get("discord_user")
-    if not isinstance(user, dict) or not user.get("id"):
+    data = session_data(request)
+    if not data or not data.get("user", {}).get("id"):
         raise HTTPException(status_code=401, detail="Sign-in required.")
-    return user
+    return data
 
 
 @app.middleware("http")
 async def enforce_browser_origin(request: Request, call_next):
-    # Mutating routes must be same-origin. OAuth callback is a top-level GET.
     if request.method in {"POST", "PATCH", "PUT", "DELETE"}:
-        origin = request.headers.get("origin")
-        if origin != FRONTEND_ORIGIN:
+        if request.headers.get("origin") != FRONTEND_ORIGIN:
             return JSONResponse({"detail": "Invalid request origin."}, status_code=403)
     return await call_next(request)
 
 
 @app.get("/api/health")
 async def health():
-    # This is API-process health only, not bot/DB/Redis health.
+    # API process health only; not proof the bot, database or Redis are healthy.
     return {"status": "ok", "service": "fallen-control-center-api", "version": "0.1.0"}
 
 
@@ -93,19 +95,22 @@ async def login(request: Request):
         "state": state,
         "prompt": "consent",
     }
-    return RedirectResponse(
-        "https://discord.com/oauth2/authorize?" + urlencode(params),
-        status_code=302,
-    )
+    return RedirectResponse("https://discord.com/oauth2/authorize?" + urlencode(params), status_code=302)
 
 
 @app.get("/api/auth/callback")
-async def callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None):
+async def callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
     require_oauth_config()
     expected = request.session.pop("oauth_state", None)
     if error or not code or not state or not expected or not secrets.compare_digest(state, expected):
         request.session.clear()
         raise HTTPException(status_code=400, detail="Discord authorization could not be verified. Please try again.")
+
     async with httpx.AsyncClient(timeout=12.0) as client:
         token_response = await client.post(
             "https://discord.com/api/oauth2/token",
@@ -131,49 +136,58 @@ async def callback(request: Request, code: str | None = None, state: str | None 
         if user_response.status_code != 200:
             raise HTTPException(status_code=502, detail="Discord identity lookup failed.")
         user = user_response.json()
-    # Keep the OAuth access token server-side in the signed session. Never return it to JS.
-    request.session.clear()
-    request.session["discord_user"] = {
-        "id": str(user["id"]),
-        "username": user.get("username", "Discord user"),
-        "global_name": user.get("global_name"),
-        "avatar": user.get("avatar"),
+
+    # Signed browser cookie contains only a random opaque session ID, not the token.
+    old_session_id = request.session.get("session_id")
+    if isinstance(old_session_id, str):
+        SERVER_SESSIONS.pop(old_session_id, None)
+    session_id = secrets.token_urlsafe(32)
+    SERVER_SESSIONS[session_id] = {
+        "user": {
+            "id": str(user["id"]),
+            "username": user.get("username", "Discord user"),
+            "global_name": user.get("global_name"),
+            "avatar": user.get("avatar"),
+        },
+        "access_token": access_token,
     }
-    request.session["oauth_access_token"] = access_token
+    request.session.clear()
+    request.session["session_id"] = session_id
     return RedirectResponse(FRONTEND_ORIGIN, status_code=303)
 
 
 @app.get("/api/auth/me")
 async def me(request: Request):
-    user = request.session.get("discord_user")
-    return {"authenticated": bool(isinstance(user, dict) and user.get("id")), "user": user}
+    data = session_data(request)
+    return {"authenticated": bool(data), "user": data.get("user") if data else None}
 
 
 @app.post("/api/auth/logout")
 async def logout(request: Request):
+    session_id = request.session.get("session_id")
+    if isinstance(session_id, str):
+        SERVER_SESSIONS.pop(session_id, None)
     request.session.clear()
     response = JSONResponse({"ok": True})
-    response.delete_cookie("fallen_session", path="/", secure=COOKIE_SECURE, httponly=True, samesite="lax")
+    response.delete_cookie(
+        "fallen_session", path="/", secure=COOKIE_SECURE, httponly=True, samesite="lax"
+    )
     return response
 
 
 @app.get("/api/guilds")
 async def guilds(request: Request):
     require_oauth_config()
-    require_session(request)
-    access_token = request.session.get("oauth_access_token")
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Please sign in again.")
+    data = require_session(request)
     async with httpx.AsyncClient(timeout=12.0) as client:
         response = await client.get(
             "https://discord.com/api/users/@me/guilds",
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers={"Authorization": f"Bearer {data['access_token']}"},
         )
     if response.status_code != 200:
         raise HTTPException(status_code=502, detail="Could not load Discord servers.")
-    user_guilds = response.json()
     manageable = []
-    for guild in user_guilds:
+    for guild in response.json():
         try:
             permissions = int(guild.get("permissions", "0"))
         except (ValueError, TypeError):
@@ -186,8 +200,7 @@ async def guilds(request: Request):
                 "icon": guild.get("icon"),
                 "owner": bool(guild.get("owner")),
             })
-    # Bot installation and per-guild API authorization still need to be verified
-    # before this list can be used to access/change any FALLEN configuration.
+    # These are user-manageable guilds, not proof FALLEN is installed there.
     return {"guilds": manageable, "live_bot_data": False}
 
 
@@ -196,8 +209,5 @@ async def guild_overview(guild_id: str, request: Request):
     require_session(request)
     if not guild_id.isdecimal() or len(guild_id) > 22:
         raise HTTPException(status_code=400, detail="Invalid server ID.")
-    # Fail closed until the bot-installed check and trusted data adapter exist.
-    raise HTTPException(
-        status_code=501,
-        detail="Live server overview is not wired to FALLEN services yet.",
-    )
+    # Fail closed until bot-installed checks and a trusted data adapter exist.
+    raise HTTPException(status_code=501, detail="Live server overview is not wired to FALLEN services yet.")
