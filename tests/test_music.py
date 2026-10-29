@@ -10,7 +10,7 @@ def test_music_is_disabled_without_lavalink_configuration():
     assert asyncio.run(service.start()) is False
 
 
-def test_music_connects_to_lavalink_without_idle_player_timeout(monkeypatch):
+def test_music_registers_lavalink_node_without_idle_player_timeout(monkeypatch):
     service = MusicService(object(), 'http://localhost:2333', 'secret')
     connected = {}
 
@@ -20,7 +20,8 @@ def test_music_connects_to_lavalink_without_idle_player_timeout(monkeypatch):
         return {'default': nodes[0]}
 
     monkeypatch.setattr('bot.services.music.wavelink.Pool.connect', fake_connect)
-    assert asyncio.run(service.start()) is True
+    # The mock registers a node but does not simulate the websocket handshake.
+    assert asyncio.run(service.start()) is False
 
     assert connected['node']._inactive_player_timeout is None
     assert service.node is connected['node']

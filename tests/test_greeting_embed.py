@@ -92,7 +92,8 @@ def test_stored_banner_bytes_are_safe_for_json_cache():
     created_at = datetime(2026, 10, 2, tzinfo=timezone.utc)
     encoded = service._cache_safe({'welcome_background_data': b'GIF89a', 'created_at': created_at})
 
-    assert encoded['welcome_background_data'].startswith('base64:')
+    # Binary greeting media is intentionally excluded from the Redis JSON cache.
+    assert encoded['welcome_background_data'] is None
     assert encoded['created_at'] == created_at.isoformat()
     json.dumps(encoded)
 

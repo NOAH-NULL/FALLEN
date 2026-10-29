@@ -39,7 +39,7 @@ class LeaseCache:
 @pytest.mark.asyncio
 async def test_lease_loss_fails_closed_and_invalidates_fence():
     cache = LeaseCache()
-    manager = ShardLeaseManager(cache, "a", 1000)
+    manager = ShardLeaseManager(cache, "a", 3000)
     await manager.acquire([0])
     fence = manager.fences[0]
     cache.leases.pop("shard-lease:0")
