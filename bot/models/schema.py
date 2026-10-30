@@ -5,6 +5,7 @@ class Base(DeclarativeBase): pass
 class GuildConfig(Base):
     __tablename__='guild_configs'
     guild_id:Mapped[int]=mapped_column(BigInteger,primary_key=True)
+    command_prefix:Mapped[str]=mapped_column(String(5),default=',',nullable=False)
     welcome_channel_id:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
     goodbye_channel_id:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
     log_channel_id:Mapped[int|None]=mapped_column(BigInteger,nullable=True)
