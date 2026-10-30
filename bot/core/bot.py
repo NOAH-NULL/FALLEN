@@ -39,17 +39,23 @@ from bot.ui import info_embed
 log=logging.getLogger('bot')
 EXTENSIONS=('bot.commands.greeting','bot.commands.greeting_prefix','bot.commands.rules','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.prefix','bot.commands.extreme','bot.commands.levels')
 class Bot(commands.AutoShardedBot):
-    async def _command_prefix(self, message):
-        """Resolve the command prefix per guild; DMs retain the default prefix."""
+    @staticmethod
+    async def _command_prefix(bot, message):
+        """Resolve the command prefix per guild; DMs retain the default prefix.
+
+        discord.py invokes callable command_prefix values as (bot, message).
+        This must therefore be a static method rather than a bound one-argument
+        instance method.
+        """
         if message.guild is None:
-            return commands.when_mentioned_or(",")(self, message)
+            return commands.when_mentioned_or(",")(bot, message)
         try:
-            config = await self.guild_config.get(message.guild.id)
+            config = await bot.guild_config.get(message.guild.id)
             prefix = (config or {}).get("command_prefix") or ","
         except Exception:
             log.exception("could not load command prefix guild=%s", message.guild.id)
             prefix = ","
-        return commands.when_mentioned_or(prefix)(self, message)
+        return commands.when_mentioned_or(prefix)(bot, message)
 
     def __init__(self,settings):
         intents=discord.Intents.default(); intents.members=True; intents.message_content=True
