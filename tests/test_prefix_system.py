@@ -83,7 +83,7 @@ async def test_dynamic_prefix_falls_back_when_config_lookup_fails(monkeypatch):
     result = await Bot._command_prefix(bot, FakeMessage(456))
 
     assert result == [","]
-    assert seen["prefixes"] == (",")
+    assert seen["prefixes"] == (",",)
 
 
 def test_guild_config_default_prefix_is_comma():
@@ -112,6 +112,6 @@ def test_help_uses_dynamic_prefix_placeholder():
     from bot.commands.help import _prefix_inventory
 
     bot = commands.Bot(command_prefix=",", intents=discord.Intents.none())
-    bot.add_command(commands.Command(lambda ctx: None, name="probe"))
+    async def probe(ctx):\n        return None\n\n    bot.add_command(commands.Command(probe, name="probe"))
     entries = _prefix_inventory(bot)
     assert any(syntax == "<prefix>probe" for _, syntax, _ in entries)
