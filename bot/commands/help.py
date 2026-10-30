@@ -35,7 +35,7 @@ def _prefix_inventory(bot: commands.Bot) -> list[tuple[str, str, str]]:
             continue
         # Groups are useful help entries too; subcommands appear independently.
         usage = command.signature.strip()
-        syntax = f"{bot.command_prefix}{command.qualified_name}"
+        syntax = f"<prefix>{command.qualified_name}"
         if usage:
             syntax += f" {usage}"
         items.append((_category(command), syntax, command.short_doc or command.help or "No description provided."))
@@ -98,7 +98,7 @@ class HelpPager(discord.ui.View):
         embed = discord.Embed(
             title=self.title_text,
             description=(f"**{len(self.entries)} registered entries** · Page {self.page + 1}/{pages}\n"
-                         "Use `,help command-name` or `/help` with a search term for details."),
+                         "Use `<prefix>help command-name` or `/help` with a search term for details. Your server prefix is configurable."),
             colour=discord.Colour.blurple(),
         )
         if not chunk:
