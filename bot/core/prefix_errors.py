@@ -5,7 +5,7 @@ from discord.ext import commands
 log = logging.getLogger('bot.commands')
 
 
-def _message(error: commands.CommandError) -> str:
+def _message(error: commands.CommandError, prefix: str = ',') -> str:
     if isinstance(error, commands.MissingPermissions):
         return 'You do not have permission to use that command.'
     if isinstance(error, commands.BotMissingPermissions):
@@ -15,7 +15,7 @@ def _message(error: commands.CommandError) -> str:
     if isinstance(error, commands.BadArgument):
         return 'One of the supplied values could not be understood. Mention a member/channel/role or use a valid number.'
     if isinstance(error, commands.CommandNotFound):
-        return 'That command does not exist. Try `,help`.'
+        return f'That command does not exist. Try `{prefix}help`.'
     if isinstance(error, commands.NoPrivateMessage):
         return 'This command can only be used inside a server.'
     if isinstance(error, commands.CommandOnCooldown):
@@ -30,7 +30,7 @@ async def handle_prefix_command_error(ctx: commands.Context, error: commands.Com
                               commands.CommandNotFound, commands.NoPrivateMessage,
                               commands.CommandOnCooldown)):
         log.exception('prefix command failed', exc_info=original)
-    embed = discord.Embed(title='✕ Command failed', description=_message(error), colour=discord.Colour.red())
+    embed = discord.Embed(title='✕ Command failed', description=_message(error, ctx.prefix if isinstance(ctx.prefix, str) else ','), colour=discord.Colour.red())
     embed.set_footer(text='Fallen • Try help for command usage')
     try:
         await ctx.send(embed=embed, delete_after=12)
