@@ -37,11 +37,23 @@ from bot.core.app_errors import handle_app_command_error
 from bot.core.prefix_errors import handle_prefix_command_error
 from bot.ui import info_embed
 log=logging.getLogger('bot')
-EXTENSIONS=('bot.commands.greeting','bot.commands.greeting_prefix','bot.commands.rules','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.extreme','bot.commands.levels')
+EXTENSIONS=('bot.commands.greeting','bot.commands.greeting_prefix','bot.commands.rules','bot.commands.moderation','bot.commands.fun','bot.commands.utility','bot.commands.invites','bot.commands.music','bot.commands.admin','bot.commands.community','bot.commands.custom','bot.commands.tickets','bot.commands.platform','bot.commands.control','bot.commands.engagement','bot.commands.security','bot.commands.text','bot.commands.help','bot.commands.prefix','bot.commands.extreme','bot.commands.levels')
 class Bot(commands.AutoShardedBot):
+    async def _command_prefix(self, message):
+        """Resolve the command prefix per guild; DMs retain the default prefix."""
+        if message.guild is None:
+            return commands.when_mentioned_or(",")(self, message)
+        try:
+            config = await self.guild_config.get(message.guild.id)
+            prefix = (config or {}).get("command_prefix") or ","
+        except Exception:
+            log.exception("could not load command prefix guild=%s", message.guild.id)
+            prefix = ","
+        return commands.when_mentioned_or(prefix)(self, message)
+
     def __init__(self,settings):
         intents=discord.Intents.default(); intents.members=True; intents.message_content=True
-        kwargs={'command_prefix':settings.command_prefix,'intents':intents,'chunk_guilds_at_startup':False,'help_command':None}
+        kwargs={'command_prefix':self._command_prefix,'intents':intents,'chunk_guilds_at_startup':False,'help_command':None}
         if settings.shard_count is not None: kwargs['shard_count']=settings.shard_count
         if settings.parsed_shard_ids is not None: kwargs['shard_ids']=settings.parsed_shard_ids
         super().__init__(**kwargs); self.settings=settings; self.log=log
