@@ -57,6 +57,12 @@ class Bot(commands.AutoShardedBot):
             prefix = ","
         return commands.when_mentioned_or(prefix)(bot, message)
 
+    @staticmethod
+    def _matching_prefix(message, prefixes):
+        if isinstance(prefixes, str):
+            prefixes = (prefixes,)
+        return next((prefix for prefix in prefixes if prefix and message.content.startswith(prefix)), None)
+
     def __init__(self,settings):
         intents=discord.Intents.default(); intents.members=True; intents.message_content=True
         kwargs={'command_prefix':self._command_prefix,'intents':intents,'chunk_guilds_at_startup':False,'help_command':None}
@@ -978,7 +984,8 @@ class Bot(commands.AutoShardedBot):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-        critical = message.content.startswith(self.command_prefix)
+        prefixes = await self.get_prefix(message)
+        critical = self._matching_prefix(message, prefixes) is not None
         accepted = self.gateway_queue.put_nowait('message', message, critical=critical)
         if not accepted and critical:
             log.error(
@@ -1033,12 +1040,14 @@ class Bot(commands.AutoShardedBot):
         # Prefix commands take the fast lane: parse/invoke before non-critical
         # XP, invite and moderation bookkeeping. This keeps command latency
         # independent of background engagement work.
-        if message.content.startswith(self.command_prefix):
+        prefixes = await self.get_prefix(message)
+        matched_prefix = self._matching_prefix(message, prefixes)
+        if matched_prefix is not None:
             ctx = await self.get_context(message)
             if ctx.command:
                 await self.invoke(ctx)
                 return
-            raw = message.content[len(self.command_prefix):].strip().split(maxsplit=1)
+            raw = message.content[len(matched_prefix):].strip().split(maxsplit=1)
             if raw:
                 response = await self.custom_commands.get(message.guild.id, raw[0].lower())
                 if response:
