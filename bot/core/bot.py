@@ -63,7 +63,10 @@ class Bot(commands.AutoShardedBot):
         if resolver is not None:
             return await resolver(message)
         # Lightweight service fakes used by isolated message-pipeline tests do
-        # not inherit commands.Bot; preserve the same dynamic-prefix contract.
+        # not inherit commands.Bot; honor their literal prefix when supplied.
+        literal_prefix = getattr(bot, 'command_prefix', None)
+        if isinstance(literal_prefix, str):
+            return commands.when_mentioned_or(literal_prefix)(bot, message)
         return await Bot._command_prefix(bot, message)
 
     @staticmethod
