@@ -9,11 +9,11 @@ def test_every_catalog_feature_has_runtime_default():
     assert len(names) == 100
 
 
-def test_v16_prefix_surface_is_not_duplicated_in_legacy_text_cog():
+def test_fallen_prefix_surface_is_not_duplicated_in_legacy_text_cog():
     text = Path('bot/commands/text.py').read_text()
     assert "commands.group(name='v16'" not in text
     extreme = Path('bot/commands/extreme.py').read_text()
-    assert "hybrid_group(name='v16'" in extreme
+    assert "hybrid_group(name='fallen', aliases=['v16']" in extreme
 
 
 def test_secret_material_is_not_checked_in():

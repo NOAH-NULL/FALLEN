@@ -6,25 +6,25 @@ from discord.ext import commands
 from bot.services.extreme import FEATURES, IMPLEMENTED_FEATURES
 
 class Extreme(commands.Cog):
-    """Single hybrid interface for the V16 capabilities.
+    """Single hybrid interface for the FALLEN capabilities.
 
-    One implementation powers both `/v16 ...` and `,v16 ...`, eliminating the
+    One implementation powers both `/fallen ...` and `,fallen ...`, eliminating the
     previous duplicated prefix/slash implementations.
     """
     def __init__(self, bot): self.bot = bot
 
-    @commands.hybrid_group(name='v16', invoke_without_command=True, description='Configure Fallen V16 capabilities')
+    @commands.hybrid_group(name='fallen', aliases=['v16'], invoke_without_command=True, description='Configure Fallen FALLEN capabilities')
     @commands.guild_only()
     async def v16(self, ctx: commands.Context):
         state = await self.bot.extreme.get(ctx.guild.id)
         enabled = sum(bool(state.get(name, False)) for name in IMPLEMENTED_FEATURES)
         await ctx.send(
-            f'⚙️ **Fallen V16:** `{enabled}/{len(IMPLEMENTED_FEATURES)}` implemented capabilities enabled. '
+            f'⚙️ **Fallen FALLEN:** `{enabled}/{len(IMPLEMENTED_FEATURES)}` implemented capabilities enabled. '
             f'The catalog contains 100 entries; unfinished entries cannot be enabled yet. '
-            f'Use `{ctx.prefix}v16 help` or `/v16 help`.'
+            f'Use `{ctx.prefix}v16 help` or `/fallen help`.'
         )
 
-    @v16.command(name='help', description='Show V16 capability domains')
+    @v16.command(name='help', description='Show FALLEN capability domains')
     async def help_cmd(self, ctx):
         state = await self.bot.extreme.get(ctx.guild.id)
         lines = []
@@ -36,7 +36,7 @@ class Extreme(commands.Cog):
             lines.append(f'**{category.title()}** — {active}/{len(supported)} enabled{suffix}')
         await ctx.send('\n'.join(lines))
 
-    @v16.command(name='status', description='Show V16 capability status')
+    @v16.command(name='status', description='Show FALLEN capability status')
     async def status(self, ctx):
         state=await self.bot.extreme.get(ctx.guild.id)
         active = [key for key in IMPLEMENTED_FEATURES if state.get(key, False)]
@@ -53,7 +53,7 @@ class Extreme(commands.Cog):
         except ValueError as exc: return await ctx.send(f'❌ {exc}')
         await ctx.send(f'✅ `{feature}` is now **{"enabled" if enabled else "disabled"}**.')
 
-    @v16.command(name='validate', description='Validate persistent V16 configuration')
+    @v16.command(name='validate', description='Validate persistent FALLEN configuration')
     @commands.has_guild_permissions(manage_guild=True)
     async def validate(self, ctx):
         errors=await self.bot.extreme.validate(ctx.guild.id)
@@ -150,7 +150,7 @@ class Extreme(commands.Cog):
         except ValueError as exc:
             return await ctx.send(f'❌ {exc}')
         except Exception:
-            self.bot.log.exception('V16 AutoMod rule save failed guild=%s rule=%s', ctx.guild.id, name)
+            self.bot.log.exception('FALLEN AutoMod rule save failed guild=%s rule=%s', ctx.guild.id, name)
             return await ctx.send('❌ Could not save the AutoMod rule because of an internal error. Check the bot logs.')
         await ctx.send(f'✅ AutoMod rule `{name}` saved.', allowed_mentions=discord.AllowedMentions.none())
 
@@ -277,19 +277,19 @@ class Extreme(commands.Cog):
             )
         await ctx.send(f'🔨 Temporarily banned **{member}** for **{minutes} minutes**.')
 
-    @v16.command(name='ticket-note', description='Add a staff note to the current V16 ticket')
+    @v16.command(name='ticket-note', description='Add a staff note to the current FALLEN ticket')
     @commands.has_guild_permissions(manage_channels=True)
     async def ticket_note(self, ctx, *, note: str):
         row=await self.bot.extreme.ticket_get(ctx.channel.id)
-        if not row: return await ctx.send('❌ This is not a V16 ticket.')
+        if not row: return await ctx.send('❌ This is not a FALLEN ticket.')
         await self.bot.extreme.ticket_update(ctx.channel.id,notes=(row.notes+'\n'+note).strip())
         await ctx.send('📝 Ticket note saved.')
 
-    @v16.command(name='ticket-claim', description='Claim the current V16 ticket')
+    @v16.command(name='ticket-claim', description='Claim the current FALLEN ticket')
     @commands.has_guild_permissions(manage_channels=True)
     async def ticket_claim(self, ctx):
         row=await self.bot.extreme.ticket_get(ctx.channel.id)
-        if not row: return await ctx.send('❌ This is not a V16 ticket.')
+        if not row: return await ctx.send('❌ This is not a FALLEN ticket.')
         await self.bot.extreme.ticket_update(ctx.channel.id,claimer_id=ctx.author.id)
         await ctx.send(f'🎫 Ticket claimed by {ctx.author.mention}.')
 
@@ -298,7 +298,7 @@ class Extreme(commands.Cog):
     async def ticket_priority(self, ctx, priority: int):
         if not 0<=priority<=5:return await ctx.send('❌ Priority must be 0–5.')
         row=await self.bot.extreme.ticket_get(ctx.channel.id)
-        if not row:return await ctx.send('❌ This is not a V16 ticket.')
+        if not row:return await ctx.send('❌ This is not a FALLEN ticket.')
         await self.bot.extreme.ticket_update(ctx.channel.id,priority=priority)
         await ctx.send(f'🎫 Ticket priority set to **{priority}**.')
 
