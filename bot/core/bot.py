@@ -58,6 +58,15 @@ class Bot(commands.AutoShardedBot):
         return commands.when_mentioned_or(prefix)(bot, message)
 
     @staticmethod
+    async def _resolve_message_prefixes(bot, message):
+        resolver = getattr(bot, 'get_prefix', None)
+        if resolver is not None:
+            return await resolver(message)
+        # Lightweight service fakes used by isolated message-pipeline tests do
+        # not inherit commands.Bot; preserve the same dynamic-prefix contract.
+        return await Bot._command_prefix(bot, message)
+
+    @staticmethod
     def _matching_prefix(message, prefixes):
         if isinstance(prefixes, str):
             prefixes = (prefixes,)
@@ -984,7 +993,7 @@ class Bot(commands.AutoShardedBot):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-        prefixes = await self.get_prefix(message)
+        prefixes = await Bot._resolve_message_prefixes(self, message)
         critical = self._matching_prefix(message, prefixes) is not None
         accepted = self.gateway_queue.put_nowait('message', message, critical=critical)
         if not accepted and critical:
