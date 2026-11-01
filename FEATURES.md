@@ -29,3 +29,5 @@ This file lists major systems present in the repository. It is not a promise tha
 - The Control Center API is an early-stage FastAPI scaffold; see the README for its current deployment and session limitations.
 
 For planned work, use GitHub Issues rather than treating an unimplemented capability catalog as a shipped feature list.
+
+The capability configuration group is exposed as `/fallen` and `,fallen`; `v16` remains a legacy prefix-command alias.
