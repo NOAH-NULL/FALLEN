@@ -19,10 +19,11 @@ class Platform(commands.Cog):
     @app_commands.guild_only()
     async def remind(self,interaction:discord.Interaction,seconds:app_commands.Range[int,1,2592000],message:str):
         if not interaction.guild: return
-        await self.bot.platform.add_reminder(interaction.guild.id,interaction.user.id,interaction.channel.id,seconds,message)
+        await interaction.response.defer(ephemeral=True)
+        row = await self.bot.platform.add_reminder(interaction.guild.id,interaction.user.id,interaction.channel.id,seconds,message)
         embed = success_embed('Reminder scheduled', f"I'll remind you in **{seconds} seconds** in {interaction.channel.mention}.")
         embed.add_field(name='Message', value=message[:1024], inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
     @app_commands.command(name='suggest',description='Submit a suggestion')
     @app_commands.guild_only()
     async def suggest(self,interaction:discord.Interaction,content:str):
