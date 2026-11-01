@@ -160,3 +160,7 @@ The API does not replace the bot's PostgreSQL/Redis services or run the Discord 
 ## License
 
 FALLEN is distributed under the MIT License. See [LICENSE](LICENSE).
+
+## Main capability command
+
+The capability configuration group is available as `/fallen` and `,fallen`. The previous `v16` prefix command remains as a compatibility alias; new documentation and examples use the FALLEN name.
