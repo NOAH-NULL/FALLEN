@@ -118,3 +118,17 @@ def test_help_uses_dynamic_prefix_placeholder():
     bot.add_command(commands.Command(probe, name="probe"))
     entries = _prefix_inventory(bot)
     assert any(syntax == "<prefix>probe" for _, syntax, _ in entries)
+
+
+@pytest.mark.parametrize(
+    ('content', 'prefixes', 'expected'),
+    [
+        ('!!help', ['<@123> ', '!!'], '!!'),
+        ('<@123> help', ['<@123> ', '!!'], '<@123> '),
+        ('?rank', '?', '?'),
+        ('help', [',', '!!'], None),
+    ],
+)
+def test_matching_prefix_resolves_string_and_sequence_values(content, prefixes, expected):
+    message = types.SimpleNamespace(content=content)
+    assert Bot._matching_prefix(message, prefixes) == expected
