@@ -15,13 +15,14 @@ class Engagement(commands.GroupCog, name='engage'):
         embed = info_embed('📊 Community Poll', question)
         embed.add_field(name='Vote', value='👍 Yes\n👎 No', inline=False)
         embed.set_footer(text=f'Created by {interaction.user.display_name}')
+        await interaction.response.defer(ephemeral=True)
         message = await interaction.channel.send(embed=embed)
         for emoji in ('👍', '👎'):
             try:
                 await message.add_reaction(emoji)
             except discord.HTTPException:
                 pass
-        await interaction.response.send_message(embed=success_embed('Poll created', f'Your poll is live in {interaction.channel.mention}.'), ephemeral=True)
+        await interaction.followup.send(embed=success_embed('Poll created', f'Your poll is live in {interaction.channel.mention}.'), ephemeral=True)
 
     @app_commands.command(name='8ball', description='Ask the magic 8-ball')
     async def eightball(self, interaction: discord.Interaction, question: str):

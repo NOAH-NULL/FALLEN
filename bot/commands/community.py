@@ -62,6 +62,7 @@ class Community(commands.Cog):
         xp_per_letter='XP earned for each letter in per-character mode',
         max_letter_xp='Maximum XP from one message in per-character mode',
     )
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_settings(self, i, enabled: bool | None = None, announce: bool | None = None,
                              xp_min: app_commands.Range[int, 1, 1000] | None = None,
                              xp_max: app_commands.Range[int, 1, 1000] | None = None,
@@ -102,6 +103,7 @@ class Community(commands.Cog):
     @app_commands.command(name='level-channel', description='Allow leveling XP in a specific channel')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_channel(self, i, channel: discord.TextChannel):
         cfg = await self.bot.levels.settings(i.guild_id)
         channels = set(cfg['xp_channels'])
@@ -112,6 +114,7 @@ class Community(commands.Cog):
     @app_commands.command(name='level-channel-remove', description='Remove a channel from the leveling XP whitelist')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_channel_remove(self, i, channel: discord.TextChannel):
         cfg = await self.bot.levels.settings(i.guild_id)
         channels = [x for x in cfg['xp_channels'] if x != channel.id]
@@ -129,6 +132,7 @@ class Community(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(member='Member receiving XP', amount='Amount of XP to add')
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def xp_add(self, i, member: discord.Member, amount: app_commands.Range[int, 1, 1000000]):
         old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount)
         await i.response.send_message(embed=success_embed('XP added', f'{member.mention} received **{amount:,} XP**.\nLevel: **{new_level}** • Total XP: **{total:,}**'), ephemeral=True)
@@ -137,6 +141,7 @@ class Community(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(member='Member losing XP', amount='Amount of XP to remove')
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def xp_remove(self, i, member: discord.Member, amount: app_commands.Range[int, 1, 1000000]):
         old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, -amount)
         await i.response.send_message(embed=success_embed('XP removed', f'{member.mention} lost **{amount:,} XP**.\nLevel: **{new_level}** • Total XP: **{total:,}**'), ephemeral=True)
@@ -145,6 +150,7 @@ class Community(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(member='Member to update', amount='New total XP value')
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def xp_set(self, i, member: discord.Member, amount: app_commands.Range[int, 0, 10000000]):
         old_level, new_level, xp, total = await self.bot.levels.modify_xp(i.guild_id, member.id, amount, set_value=True)
         await i.response.send_message(embed=success_embed('XP set', f'{member.mention} now has **{total:,} total XP**.\nLevel: **{new_level}**'), ephemeral=True)
@@ -153,6 +159,7 @@ class Community(commands.Cog):
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(role='Role receiving bonus XP', multiplier='XP multiplier from 1x to 10x')
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_bonus(self, i, role: discord.Role, multiplier: app_commands.Range[int, 1, 10]):
         cfg = await self.bot.levels.settings(i.guild_id)
         bonuses = dict(cfg['bonus_roles'])
@@ -166,6 +173,7 @@ class Community(commands.Cog):
     @app_commands.command(name='level-bonus-remove', description='Remove a role XP multiplier')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_bonus_remove(self, i, role: discord.Role):
         cfg = await self.bot.levels.settings(i.guild_id)
         bonuses = dict(cfg['bonus_roles'])
@@ -179,6 +187,7 @@ class Community(commands.Cog):
     @app_commands.command(name='level-exclude-channel', description='Exclude a channel from XP')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_exclude_channel(self, i, channel: discord.TextChannel):
         cfg = await self.bot.levels.settings(i.guild_id)
         channels = set(cfg['no_xp_channels'])
@@ -189,6 +198,7 @@ class Community(commands.Cog):
     @app_commands.command(name='level-exclude-role', description='Exclude a role from XP')
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def level_exclude_role(self, i, role: discord.Role):
         cfg = await self.bot.levels.settings(i.guild_id)
         roles = set(cfg['no_xp_roles'])
