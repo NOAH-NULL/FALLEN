@@ -66,6 +66,10 @@ class Bot(commands.AutoShardedBot):
         # not inherit commands.Bot; honor their literal prefix when supplied.
         literal_prefix = getattr(bot, 'command_prefix', None)
         if isinstance(literal_prefix, str):
+            # Test doubles may not expose bot.user, which discord.py's mention
+            # prefix helper requires. Production Bot instances use get_prefix above.
+            if getattr(bot, 'user', None) is None:
+                return literal_prefix
             return commands.when_mentioned_or(literal_prefix)(bot, message)
         return await Bot._command_prefix(bot, message)
 
