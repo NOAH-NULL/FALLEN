@@ -1052,7 +1052,7 @@ class Bot(commands.AutoShardedBot):
         # Prefix commands take the fast lane: parse/invoke before non-critical
         # XP, invite and moderation bookkeeping. This keeps command latency
         # independent of background engagement work.
-        prefixes = await self.get_prefix(message)
+        prefixes = await Bot._resolve_message_prefixes(self, message)
         matched_prefix = self._matching_prefix(message, prefixes)
         if matched_prefix is not None:
             ctx = await self.get_context(message)
