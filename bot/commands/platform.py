@@ -37,10 +37,20 @@ class Platform(commands.Cog):
     @app_commands.command(name='daily',description='Claim daily coins')
     @app_commands.guild_only()
     async def daily(self,interaction:discord.Interaction):
-        allowed=await self.bot.limiter.allow(f'daily:{interaction.guild.id}:{interaction.user.id}',1,86400)
-        if not allowed:
+        key = f'daily:{interaction.guild.id}:{interaction.user.id}'
+        reservation = await self.bot.limiter.reserve(key, 86400)
+        if reservation is None:
             return await interaction.response.send_message(embed=error_embed('Daily already claimed', 'You can claim the daily reward again after the cooldown resets.'),ephemeral=True)
-        b=await self.bot.platform.change_balance(interaction.guild.id,interaction.user.id,100); embed=success_embed('Daily reward', f'You received **100 coins**.'); embed.add_field(name='New balance',value=f'**{b:,}**',inline=True); await interaction.response.send_message(embed=embed)
+        await interaction.response.defer(ephemeral=True)
+        try:
+            balance = await self.bot.platform.change_balance(interaction.guild.id,interaction.user.id,100)
+        except Exception:
+            # Do not burn the user's daily cooldown when the reward transaction fails.
+            await self.bot.limiter.release_reservation(key, reservation)
+            raise
+        embed=success_embed('Daily reward', 'You received **100 coins**.')
+        embed.add_field(name='New balance',value=f'**{balance:,}**',inline=True)
+        await interaction.followup.send(embed=embed,ephemeral=True)
     @app_commands.command(name='coinflip',description='Flip a coin')
     @app_commands.guild_only()
     async def coinflip(self,interaction:discord.Interaction): await interaction.response.send_message(embed=info_embed('🪙 Coin flip', f'**{random.choice(("Heads","Tails"))}**'))
