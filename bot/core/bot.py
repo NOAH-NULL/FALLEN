@@ -1185,32 +1185,73 @@ class Bot(commands.AutoShardedBot):
 
             if level_cfg["announce"]:
                 configured_channel_id = level_cfg.get("announcement_channel_id")
-                target = (
-                    message.guild.get_channel(configured_channel_id)
-                    if configured_channel_id
-                    else message.channel
-                )
-                if configured_channel_id and target is None:
+                target = message.channel
+                if configured_channel_id is not None:
+                    try:
+                        channel_id = int(configured_channel_id)
+                    except (TypeError, ValueError):
+                        channel_id = 0
+                        log.error(
+                            "invalid level-up announcement channel id guild=%s channel=%r user=%s",
+                            message.guild.id,
+                            configured_channel_id,
+                            message.author.id,
+                        )
+
+                    target = message.guild.get_channel(channel_id) if channel_id else None
+                    # Guild channel caches are not guaranteed to contain every
+                    # channel at the moment an event is processed. Resolve a
+                    # cache miss through Discord instead of silently dropping
+                    # the announcement or posting it in the XP channel.
+                    if target is None and channel_id:
+                        try:
+                            target = await self.fetch_channel(channel_id)
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                            log.warning(
+                                "could not resolve level-up announcement channel guild=%s channel=%s user=%s error=%s",
+                                message.guild.id,
+                                channel_id,
+                                message.author.id,
+                                type(exc).__name__,
+                            )
+
+                    if target is not None and getattr(getattr(target, "guild", None), "id", None) != message.guild.id:
+                        log.error(
+                            "level-up announcement channel belongs to another guild guild=%s channel=%s user=%s",
+                            message.guild.id,
+                            getattr(target, "id", channel_id),
+                            message.author.id,
+                        )
+                        target = None
+
+                if target is None:
                     log.warning(
-                        "level-up announcement channel is missing guild=%s channel=%s user=%s",
+                        "level-up announcement channel unavailable guild=%s configured_channel=%s user=%s; no fallback sent",
                         message.guild.id,
                         configured_channel_id,
                         message.author.id,
                     )
-                elif target is not None:
+                elif not hasattr(target, "send"):
+                    log.warning(
+                        "level-up announcement target is not messageable guild=%s channel=%s user=%s",
+                        message.guild.id,
+                        getattr(target, "id", 0),
+                        message.author.id,
+                    )
+                else:
                     embed = info_embed(
                         "Level Up!",
                         f"{message.author.mention} reached **Level {new_level}**!\n\nTotal XP: **{total_xp:,}**",
                     )
                     me = message.guild.me
-                    permissions = target.permissions_for(me) if me else None
-                    if permissions and not (
+                    permissions = target.permissions_for(me) if me and hasattr(target, "permissions_for") else None
+                    if permissions is None or not (
                         permissions.view_channel
                         and permissions.send_messages
                         and permissions.embed_links
                     ):
                         log.warning(
-                            "level-up announcement channel lacks permissions guild=%s channel=%s user=%s",
+                            "level-up announcement channel lacks permissions or bot member is unavailable guild=%s channel=%s user=%s",
                             message.guild.id,
                             target.id,
                             message.author.id,
